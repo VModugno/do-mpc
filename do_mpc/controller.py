@@ -930,6 +930,15 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         # Return control input:
         return u0.full()
 
+    def set_omega(self):
+
+        # omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
+
+        mu, sigma = 0, 0.1 # mean and standard deviation
+        omega = np.random.normal(mu, sigma, 20)
+        print("Custom Omega Generated . . .")
+        return omega
+
 
     def _setup_mpc_optim_problem(self):
         """Private method of the MPC class to construct the MPC optimization problem.
@@ -1004,6 +1013,8 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         # Weighting factor for every scenario
         omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
         omega_delta_u = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
+
+        omega = self.set_omega()
 
         # For all control intervals
         for k in range(self.n_horizon):
