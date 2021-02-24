@@ -930,15 +930,48 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         # Return control input:
         return u0.full()
 
-    def set_omega(self):
-
+    def set_omega(self, n_horizon, type='norm'):
         # omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
+        omega = []
+        print("Generating custom Omega . . .")
 
-        mu, sigma = 0, 0.1 # mean and standard deviation
-        omega = np.random.normal(mu, sigma, 20)
-        print("Custom Omega Generated . . .")
+        if type is'binom':
+            print("Binomial Omega selected . . .")
+
+            n, p = 10, .5  # number of trials, probability of each trial
+            omega = np.random.binomial(n, p, n_horizon)
+            
+        elif type is'norm':
+            print("Normal Omega selected . . .")
+            
+            mu, sigma = 0, 0.1 # mean and standard deviation
+            omega = np.random.normal(mu, sigma, n_horizon)
+            
+        elif type is'unif':
+            print("Uniform Omega selected . . .")
+
+            low, high = 0.0, 1.0
+            omega = np.random.uniform(low,high,n_horizon)
+
+        elif type is'exp':
+            print("Exponential Omega selected . . .")
+
+            scale = 0.5
+            omega = np.random.exponential(scale,n_horizon)
+
+        elif type is'poiss':
+            print("Poisson Omega selected . . .")
+
+            lam = 1.0
+            omega = np.random.poisson(lam,n_horizon)
+
+        else:
+            print("Wrong type selected . . .")
+            raise ValueError('Wrong type distribution selected.')
+
+        print(omega)
         return omega
-
+        
 
     def _setup_mpc_optim_problem(self):
         """Private method of the MPC class to construct the MPC optimization problem.
@@ -1014,7 +1047,7 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
         omega_delta_u = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
 
-        omega = self.set_omega()
+        omega = self.set_omega(self.n_horizon)
 
         # For all control intervals
         for k in range(self.n_horizon):
