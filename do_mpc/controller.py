@@ -20,6 +20,8 @@
 #   You should have received a copy of the GNU General Public License
 #   along with do-mpc.  If not, see <http://www.gnu.org/licenses/>.
 
+from scipy.stats import expon
+
 import numpy as np
 from casadi import *
 from casadi.tools import *
@@ -930,44 +932,85 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         # Return control input:
         return u0.full()
 
-    def set_omega(self, n_horizon, type='norm'):
+    def set_omega(self, n_scenarios, type='norm'):
         # omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
-        omega = []
-        print("Generating custom Omega . . .")
 
-        if type is'binom':
-            print("Binomial Omega selected . . .")
+        print('-- Probability distribution modes -- ')
+        print('1. Manual distrinution ')
+        print('2. Hierarchical distribution ')
+        mod = int(input('Select prefered mode: '))
 
-            n, p = 10, .5  # number of trials, probability of each trial
-            omega = np.random.binomial(n, p, n_horizon)
+        if mod is 1:
+            print('There are {} scenarios, insert the aproximate probability value for each one by one.'.format(n_scenarios))
             
-        elif type is'norm':
-            print("Normal Omega selected . . .")
+            omega = [ 0 for index in scenario_indexes]
+
+            for count in range(n_scenarios):
+                prob = float(input('Insert probability value for scenario {}: '.format(count)))
+                omega[count] = prob
             
-            mu, sigma = 0, 0.1 # mean and standard deviation
-            omega = np.random.normal(mu, sigma, n_horizon)
+            omega = omega/sum(omega)
             
-        elif type is'unif':
-            print("Uniform Omega selected . . .")
+        elif mod is 2:
+            print('There are {} scenarios, insert from 1 to {} the hierarchy desired one by one.'.format(n_scenarios,n_scenarios))
 
-            low, high = 0.0, 1.0
-            omega = np.random.uniform(low,high,n_horizon)
+            dist = [expon.cdf(x,loc=0, scale=5) for x in range(n_scenarios+1)]
+            dist = (dist/sum(dist))[::-1]
 
-        elif type is'exp':
-            print("Exponential Omega selected . . .")
+            omega = [ 0 for index in scenario_indexes]
+            scenario_indexes = []
 
-            scale = 0.5
-            omega = np.random.exponential(scale,n_horizon)
+            for count in range(n_scenarios):
+                index = int(input('Insert scenario in position {}: '.format(count)))
+                scenario_indexes.append(index)
+                omega[index-1] = dist[count]
 
-        elif type is'poiss':
-            print("Poisson Omega selected . . .")
-
-            lam = 1.0
-            omega = np.random.poisson(lam,n_horizon)
+            print(scenario_indexes)
+            print(omega)
+            print('Final sum: ',sum(omega))
 
         else:
-            print("Wrong type selected . . .")
-            raise ValueError('Wrong type distribution selected.')
+            print("Wrong mode selected . . .")
+            raise ValueError('Wrong probability distribution mode selected.')
+
+        # omega = []
+        # print("Generating custom Omega . . .")
+
+        # if type is'binom':
+        #     print("Binomial Omega selected . . .")
+
+        #     n, p = 10, .5  # number of trials, probability of each trial
+        #     omega = np.random.binomial(n, p, n_scenarios)
+            
+        # elif type is'norm':
+        #     print("Normal Omega selected . . .")
+            
+        #     mu, sigma = 0, 0.1 # mean and standard deviation
+
+        #     mu = input('Insert prefered scenario: ')
+        #     omega = np.random.normal(mu, sigma, n_scenarios)
+            
+        # elif type is'unif':
+        #     print("Uniform Omega selected . . .")
+
+        #     low, high = 0.0, 1.0
+        #     omega = np.random.uniform(low,high,n_scenarios)
+
+        # elif type is'exp':
+        #     print("Exponential Omega selected . . .")
+
+        #     scale = 0.5
+        #     omega = np.random.exponential(scale,n_scenarios)
+
+        # elif type is'poiss':
+        #     print("Poisson Omega selected . . .")
+
+        #     lam = 1.0
+        #     omega = np.random.poisson(lam,n_scenarios)
+
+        # else:
+        #     print("Wrong type selected . . .")
+        #     raise ValueError('Wrong type distribution selected.')
 
         print(omega)
         return omega
@@ -1047,7 +1090,7 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
         omega_delta_u = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
 
-        omega = self.set_omega(self.n_horizon)
+        omega = self.set_omega(n_scenarios)
 
         # For all control intervals
         for k in range(self.n_horizon):
@@ -1097,14 +1140,14 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                     # TODO: Add terminal constraints with an additional nl_cons
 
                     # Add contribution to the cost
-                    obj += omega[k] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
+                    obj += omega[s] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
                                                      opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', k], opt_p['_p', current_scenario])
                     # Add slack variables to the cost
                     obj += self.epsterm_fun(opt_x_unscaled['_eps', k, s])
 
                     # In the last step add the terminal cost too
                     if k == self.n_horizon - 1:
-                        obj += omega[k] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', k+1],
+                        obj += omega[s] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', k+1],
                                                          opt_p['_p', current_scenario])
 
                     # U regularization:
