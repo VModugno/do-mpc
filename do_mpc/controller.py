@@ -935,32 +935,41 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
     def set_omega(self, n_scenarios, type='norm'):
         # omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
 
+        print('n_scenarios: ',n_scenarios)
+        print('Max: ',max(n_scenarios))
+        print()
+        max_scenarios = max(n_scenarios)
+
         print('-- Probability distribution modes -- ')
         print('1. Manual distrinution ')
         print('2. Hierarchical distribution ')
         mod = int(input('Select prefered mode: '))
+        print()
 
         if mod is 1:
-            print('There are {} scenarios, insert the aproximate probability value for each one by one.'.format(n_scenarios))
+            print('There are {} scenarios, insert the aproximate probability value for each one by one.'.format(max_scenarios))
             
-            omega = [ 0 for index in scenario_indexes]
+            omega = [ 0 for index in range(max_scenarios)]
 
-            for count in range(n_scenarios):
+            for count in range(max_scenarios):
                 prob = float(input('Insert probability value for scenario {}: '.format(count)))
                 omega[count] = prob
-            
+            omega = np.array(omega) 
             omega = omega/sum(omega)
+
+            print(omega)
+            print('Final sum: ',sum(omega))
             
         elif mod is 2:
-            print('There are {} scenarios, insert from 1 to {} the hierarchy desired one by one.'.format(n_scenarios,n_scenarios))
+            print('There are {} scenarios, insert from 1 to {} the hierarchy desired one by one.'.format(max_scenarios,max_scenarios))
 
-            dist = [expon.cdf(x,loc=0, scale=5) for x in range(n_scenarios+1)]
+            dist = [expon.cdf(x,loc=0, scale=5) for x in range(max_scenarios+1)]
             dist = (dist/sum(dist))[::-1]
 
-            omega = [ 0 for index in scenario_indexes]
+            omega = [ 0 for index in range(max_scenarios)]
             scenario_indexes = []
 
-            for count in range(n_scenarios):
+            for count in range(max_scenarios):
                 index = int(input('Insert scenario in position {}: '.format(count)))
                 scenario_indexes.append(index)
                 omega[index-1] = dist[count]
@@ -1012,7 +1021,6 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         #     print("Wrong type selected . . .")
         #     raise ValueError('Wrong type distribution selected.')
 
-        print(omega)
         return omega
         
 
