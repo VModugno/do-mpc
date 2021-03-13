@@ -30,6 +30,7 @@ ENV DEFAULT_CONDA_ENV=dompc_dev
 RUN echo "conda activate \${DEFAULT_CONDA_ENV}" >> /root/.bashrc
 WORKDIR /workdir
 COPY entrypoint.sh /
+RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/bin/bash"]
 

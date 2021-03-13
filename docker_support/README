@@ -2,13 +2,8 @@ This docker image is based on a official Ubuntu 20.04 docker image [https://docs
 To build this image:
 1)install docker on your host machine
 2)if you want simply to test the current version of the code you can skip 3) (that is intended to run a version of the code in the host)
-3)
-create a directory <MYDIR> to host the needed file and directories
-copy in <MYDIR> this file (README), the Dockerfile, the entrypoint.sh script, the run_amr_dompc.sh script and the dev_run_amr_dompc.sh script inside it
-create in MYDIR a directory to host a copy of the code:
-         amr_dompc_repo (to host the do_mpc library code)
-clone the do_mpc code in amr_dompc_repo 
-4)from MYDIR run the image building command: 
+3)clone the do_mpc code <where you want> 
+4)cd <where you want>/do-mpc/docker_support and run the image building command: 
    docker build -t amr_dompc:latest .
 
 to verify that the image has been properly built run the 'docker images' command
@@ -26,7 +21,7 @@ Once the amr_do_mpc is built:
 5.b)or use one of the following command to test a version of the code in the host (previously created as described in 3):
    run_amr_do_mpc.sh hostrepo
    dev_run_amr_dompc.sh (that simply run the previous command avoiding to insert params)
-the result of both those commands is that a  local copy of the code in amr_dompc_repo is mounted in the container in /workdir/amr_dompc (where the code of the library is cloned when the image is created) 
+the result of both those commands is that the local copy of the code (<where you want>/do-mpc)  is mounted in the container in /workdir/amr_dompc (where the code of the library is cloned when the image is created) 
 in RW mode and shadows the version cloned during the image building process
 
 6)Test that everything is ok running one of the examples in /workdir/amr_dompc/do-mpc/examples.
