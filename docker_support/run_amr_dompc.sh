@@ -1,6 +1,5 @@
 #!/bin/bash
 THIS_SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-DO_MPC_REPO=amr_dompc_repo
 PROJECT_DIR=project_source
 if [ "$1" == "hostrepo" ]; then
     ABS_PATH_DOMPCREPO=$(readlink -f $THIS_SCRIPT_DIR/..)
