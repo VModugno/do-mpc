@@ -3,7 +3,7 @@ ENV HOME /root
 COPY README /
 RUN mkdir /workdir && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata \
-    && apt-get install -y python3-pip imagemagick python3-tk curl wget git
+    && apt-get install -y python3-pip imagemagick python3-tk curl wget git nano
     #install conda
 ENV CONDA_DIR $HOME/miniconda3
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
