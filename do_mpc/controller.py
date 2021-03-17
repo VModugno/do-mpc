@@ -722,9 +722,12 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
             assert len(uncertainty_values) == self.model.n_p, err_msg.format(len(uncertainty_values), self.model.n_p)
             values = uncertainty_values
 
-
+        # find all possible combinations of values, given the lists of possibilities for the uncertain parameters.
+        # itertools.product finds the cartesian product from given iterators.
         p_scenario = list(itertools.product(*values))
+        # number of possible scenarios given possible values of uncertain parameters.
         n_combinations = len(p_scenario)
+
         p_template = self.get_p_template(n_combinations)
 
         if kwargs:
@@ -948,18 +951,18 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
 
         if mod is 1:
             print('There are {} scenarios, insert the aproximate probability value for each one by one.'.format(max_scenarios))
-            
+
             omega = [ 0 for index in range(max_scenarios)]
 
             for count in range(max_scenarios):
                 prob = float(input('Insert probability value for scenario {}: '.format(count)))
                 omega[count] = prob
-            omega = np.array(omega) 
+            omega = np.array(omega)
             omega = omega/sum(omega)
 
             print(omega)
             print('Final sum: ',sum(omega))
-            
+
         elif mod is 2:
             print('There are {} scenarios, insert from 1 to {} the hierarchy desired one by one.'.format(max_scenarios,max_scenarios))
 
@@ -990,15 +993,15 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
 
         #     n, p = 10, .5  # number of trials, probability of each trial
         #     omega = np.random.binomial(n, p, n_scenarios)
-            
+
         # elif type is'norm':
         #     print("Normal Omega selected . . .")
-            
+
         #     mu, sigma = 0, 0.1 # mean and standard deviation
 
         #     mu = input('Insert prefered scenario: ')
         #     omega = np.random.normal(mu, sigma, n_scenarios)
-            
+
         # elif type is'unif':
         #     print("Uniform Omega selected . . .")
 
@@ -1022,7 +1025,7 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         #     raise ValueError('Wrong type distribution selected.')
 
         return omega
-        
+
 
     def _setup_mpc_optim_problem(self):
         """Private method of the MPC class to construct the MPC optimization problem.
