@@ -33,6 +33,8 @@ import do_mpc.data
 import do_mpc.optimizer
 from do_mpc.tools.indexedproperty import IndexedProperty
 
+from icecream import ic
+
 class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
     """Model predictive controller.
 
@@ -115,6 +117,9 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
             'store_solver_stats',
             'nlpsol_opts'
         ]
+
+        # Initialize array of weights in case there are uncertain parameters for robust MPC
+        self.omega_robust = np.array([])
 
         # Default Parameters (param. details in set_param method):
         self.n_robust = 0
@@ -663,6 +668,22 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         self.flags['set_p_fun'] = True
         self.p_fun = p_fun
 
+    def set_uncertainty_weights(self,**kwargs):
+        """Define the weights for each scenario given some probabilities for each parameter possible value.
+
+            **Example**
+
+            # in model definition:
+            alpha = model.set_variable(var_type='_p', var_name='alpha')
+            beta = model.set_variable(var_type='_p', var_name='beta')
+            ...
+            alpha_probs = np.array([0.25,0.5,0.25])
+            beta_probs = np.array([0.10,0.75,0.15])
+            mpc.set_uncertainty_weights(alpha=alpha_probs, beta=beta_probs)
+        """
+
+
+
     def set_uncertainty_values(self, **kwargs):
         """Define scenarios for the uncertain parameters.
         High-level API method to conveniently set all possible scenarios for multistage MPC.
@@ -716,7 +737,7 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
             err_msg = 'You passed keywords {}. Valid keywords are: {} (refering to user-defined parameter names).'
             assert set(names).issubset(set(valid_names)), err_msg.format(names, valid_names)
             values = kwargs.values()
-        else:
+        else: #NOTE! uncertainty_values is not defined, always pass as dictionary.
             assert isinstance(uncertainty_values, (list, None)), 'uncertainty values must be of type list, you have: {}'.format(type(uncertainty_values))
             err_msg = 'Received a list of {} elements. You have defined {} parameters in your model.'
             assert len(uncertainty_values) == self.model.n_p, err_msg.format(len(uncertainty_values), self.model.n_p)
@@ -1097,11 +1118,16 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         cons_ub.append(np.zeros((self.model.n_x, 1)))
 
         # NOTE: Weigthing factors for the tree assumed equal. They could be set from outside
-        # Weighting factor for every scenario
-        omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
-        omega_delta_u = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
 
-        omega = self.set_omega(n_scenarios)
+        # If omega_robust is empty then use uniform weights
+        if not self.omega_robust.size:
+            # Weighting factor for every scenario
+            omega = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
+            omega_delta_u = [1. / n_scenarios[k + 1] for k in range(self.n_horizon)]
+        else:
+            omega = self.omega_robust
+
+        #omega = self.set_omega(n_scenarios)
 
         # For all control intervals
         for k in range(self.n_horizon):
@@ -1151,14 +1177,14 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                     # TODO: Add terminal constraints with an additional nl_cons
 
                     # Add contribution to the cost
-                    obj += omega[s] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
+                    obj += omega[k] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
                                                      opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', k], opt_p['_p', current_scenario])
                     # Add slack variables to the cost
                     obj += self.epsterm_fun(opt_x_unscaled['_eps', k, s])
 
                     # In the last step add the terminal cost too
                     if k == self.n_horizon - 1:
-                        obj += omega[s] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', k+1],
+                        obj += omega[k] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', k+1],
                                                          opt_p['_p', current_scenario])
 
                     # U regularization:
