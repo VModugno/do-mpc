@@ -669,18 +669,57 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         self.p_fun = p_fun
 
     def set_uncertainty_weights(self,**kwargs):
-        """Define the weights for each scenario given some probabilities for each parameter possible value.
+        """ Define the weights for each scenario given some probabilities for each parameter possible value.
+            If this functions is not used then the weights will automatically be uniform.
 
-            **Example**
+            NOTE! Please use the same order of variables as in 'set_uncertainty_values' otherwise the procedure is not correct.
+
+            **Complete Example**
 
             # in model definition:
             alpha = model.set_variable(var_type='_p', var_name='alpha')
             beta = model.set_variable(var_type='_p', var_name='beta')
             ...
-            alpha_probs = np.array([0.25,0.5,0.25])
+
+            alpha_var = np.array([1., 0.9, 1.1])
+            beta_var = np.array([1., 1.05])
+
+            MPC.set_uncertainty_values(
+                alpha = alpha_var,
+                beta = beta_var
+            )
+
+            alpha_probs = np.array([0.25,0.5,0.25]) # In this example the probabilities already sum to 1, but the arrays will anyway be renormalized.
             beta_probs = np.array([0.10,0.75,0.15])
-            mpc.set_uncertainty_weights(alpha=alpha_probs, beta=beta_probs)
+            MPC.set_uncertainty_weights(
+                alpha=alpha_probs,
+                beta=beta_probs
+            )
         """
+
+        # The values of the probabilities must be passed as a dictionary.
+        # NOTE! Please use the same order of variables as in 'set_uncertainty_values' otherwise the procedure is not correct.
+        assert isinstance(kwargs, dict), 'Pass keyword arguments, where each keyword refers to a user-defined parameter name.'
+        names = [i for i in kwargs.keys()]
+        valid_names = self.model.p.keys()
+        err_msg = 'You passed keywords {}. Valid keywords are: {} (refering to user-defined parameter names).'
+        assert set(names).issubset(set(valid_names)), err_msg.format(names, valid_names)
+
+        probabilities = list(kwargs.values())
+
+        for i in range(len(probabilities)):
+            probabilities[i] = np.array(probabilities[i])
+            probabilities[i] = probabilities[i]/sum(probabilities[i])
+
+        combinations = list(itertools.product(*probabilities))
+        combinations = np.array(combinations)
+        weights = np.zeros((combinations.shape[0],1))
+
+        for i in range(combinations.shape[0]):
+            weights[i] = np.prod(combinations[i])
+
+        self.omega_robust = weights
+
 
 
 
@@ -1177,14 +1216,14 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                     # TODO: Add terminal constraints with an additional nl_cons
 
                     # Add contribution to the cost
-                    obj += omega[k] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
+                    obj += omega[current_scenario] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
                                                      opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', k], opt_p['_p', current_scenario])
                     # Add slack variables to the cost
                     obj += self.epsterm_fun(opt_x_unscaled['_eps', k, s])
 
                     # In the last step add the terminal cost too
                     if k == self.n_horizon - 1:
-                        obj += omega[k] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', k+1],
+                        obj += omega[current_scenario] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', k+1],
                                                          opt_p['_p', current_scenario])
 
                     # U regularization:
