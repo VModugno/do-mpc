@@ -33,7 +33,6 @@ import do_mpc.data
 import do_mpc.optimizer
 from do_mpc.tools.indexedproperty import IndexedProperty
 
-from icecream import ic
 
 class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
     """Model predictive controller.
@@ -669,8 +668,9 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         self.p_fun = p_fun
 
     def set_uncertainty_weights(self,**kwargs):
-        """ Define the weights for each scenario given some probabilities for each parameter possible value.
-            If this functions is not used then the weights will automatically be uniform.
+
+        """ Define the weights for each scenario given some probabilities for each parameter's possible value.
+            If this functions is not used, the weights will automatically be uniform.
 
             NOTE! Please use the same order of variables as in 'set_uncertainty_values' otherwise the procedure is not correct.
 
@@ -689,7 +689,7 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                 beta = beta_var
             )
 
-            alpha_probs = np.array([0.25,0.5,0.25]) # In this example the probabilities already sum to 1, but the arrays will anyway be renormalized.
+            alpha_probs = np.array([0.25,0.5,0.25]) # In this example the probabilities already sum to 1, but the arrays will anyway be renormalized if that is not the case
             beta_probs = np.array([0.10,0.75,0.15])
             MPC.set_uncertainty_weights(
                 alpha=alpha_probs,
