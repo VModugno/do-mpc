@@ -10,7 +10,7 @@ class DifferentialDriveExperiment:
         self.axle_lengths = axle_lenghts
         self.wheel_radii = wheel_radii
         self.true_axle_length = true_axle_length  if true_axle_length else axle_lenghts[0] #axle length used in the simulator and in the visualization
-        self.true_wheel_radius =  true_wheel_radius if true_wheel_radius else wheel_radii[0] #wheel radius used in the simulator and in the visualization 
+        self.true_wheel_radius =  true_wheel_radius if true_wheel_radius else wheel_radii[0] #wheel radius used in the simulator and in the visualization
         self.min_wheel_ang_vel = -2
         self.max_wheel_ang_vel = 2
         self.n_horizon = 50 # prediction horizion
@@ -19,13 +19,13 @@ class DifferentialDriveExperiment:
         self._mpc = None
         self._estimator = None
         self._simulator = None
-        
+
     @property
     def model(self):
         if not self._model:
             self._setup_differential_drive_model()
         return self._model
-    
+
     @property
     def mpc(self):
         if not self._mpc:
@@ -43,11 +43,11 @@ class DifferentialDriveExperiment:
         if not self._simulator:
             self._setup_differential_drive_simulator()
         return self._simulator
-    
+
     @property
     def is_axle_lenght_param(self):
         return len(self.axle_lengths)>1
-    
+
     @property
     def is_wheel_radii_param(self):
         return len(self.wheel_radii)>1
@@ -62,10 +62,10 @@ class DifferentialDriveExperiment:
         # Euler sampling interval
         delta_t = self.delta_t
         # Verify if L, distance between wheels, is an uncertain parameter
-        if self.is_axle_lenght_param: 
+        if self.is_axle_lenght_param:
             L = model.set_variable('_p', 'L')
         else:
-            # Single hypothesis for L intrawheels 
+            # Single hypothesis for L intrawheels
             L = self.axle_lengths[0]
         # Verify if r, distance between wheels is an uncertain parameter
         if self.is_wheel_radii_param:
@@ -73,11 +73,11 @@ class DifferentialDriveExperiment:
         else:
             # Single hypothesis for r, wheel radius
             r = self.wheel_radii[0]
-    
+
         # input angular velocities of the left (u_l) and right (u_r) wheels
         u_l = model.set_variable('_u', 'u_l')
         u_r = model.set_variable('_u', 'u_r')
-    
+
         # linear (v) and angular (w) velocities of the center of the robot axle
         v = (u_l + u_r) * r / 2
         w = (u_r - u_l) * r / L
@@ -85,12 +85,12 @@ class DifferentialDriveExperiment:
         # auxiliary expressions for the robot center visualization
         model.set_expression('v', v)
         model.set_expression('w', w)
-        
+
         # state variables : position of the center of the robot axle and heading wrt x-axis
         x = model.set_variable('_x', 'x')
         y = model.set_variable('_x', 'y')
         theta = model.set_variable('_x', 'theta')
-        
+
         # right-hand side of the dynamics
         x_next = x + v * delta_t * cos(theta)
         y_next = y + v * delta_t * sin(theta)
@@ -102,6 +102,7 @@ class DifferentialDriveExperiment:
         # auxiliary expressions for the quadratic distance to the origin
         model.set_expression('distance', x**2+y**2)
         model.set_expression('zero',x-x)
+        model.set_expression('position_norm', sqrt(x**2+y**2))
         model.setup()
 
         self._model = model
@@ -147,7 +148,7 @@ class DifferentialDriveExperiment:
     def _setup_differential_drive_estimator(self):
         # We assume that all states can be directly measured
         self._estimator = do_mpc.estimator.StateFeedback(self.model)
-    
+
     def _setup_differential_drive_simulator(self):
         # Create simulator in order to run MPC in a closed-loop
         simulator = do_mpc.simulator.Simulator(self.model)
@@ -163,13 +164,13 @@ class DifferentialDriveExperiment:
             simulator.set_p_fun(p_fun)
         simulator.setup()
         self._simulator = simulator
-    
+
     def setup_experiment(self,initial_pose):
         # Define the initial state of the system and set for all parts of the closed-loop configuration:
         self.simulator.x0['x'] = initial_pose['x']
         self.simulator.x0['y'] = initial_pose['y']
         self.simulator.x0['theta'] =  initial_pose['theta']
-        
+
         x0 = self.simulator.x0.cat.full()
 
         self.mpc.x0 = x0
