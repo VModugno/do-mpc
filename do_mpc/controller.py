@@ -672,7 +672,9 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         """ Define the weights for each scenario given some probabilities for each parameter's possible value.
             If this functions is not used, the weights will automatically be uniform.
 
-            NOTE! Please use the same order of variables as in 'set_uncertainty_values' otherwise the procedure is not correct.
+            NOTE! Please use the same order of variables in the dictionary
+            as in 'set_uncertainty_values' otherwise the procedure is not
+            correctly executed.
 
             **Complete Example**
 
@@ -689,8 +691,11 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                 beta = beta_var
             )
 
-            alpha_probs = np.array([0.25,0.5,0.25]) # In this example the probabilities already sum to 1, but the arrays will anyway be renormalized if that is not the case
-            beta_probs = np.array([0.10,0.75,0.15])
+            alpha_probs = np.array([0.25,0.5,0.25])
+            beta_probs = np.array([0.25,0.75])
+
+            # In this example the probabilities already sum to 1, but the arrays will anyway be renormalized if that is not the case
+
             MPC.set_uncertainty_weights(
                 alpha=alpha_probs,
                 beta=beta_probs
