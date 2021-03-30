@@ -24,6 +24,7 @@ RUN conda install pip \
     && pip3 install matplotlib \
     && pip3 install casadi \
     && pip3 install scipy \
+    && pip3 install -U pytest \
     && mkdir /workdir/amr_dompc \
     && git clone https://github.com/VModugno/do-mpc.git /workdir/amr_dompc/do-mpc
 ENV DEFAULT_CONDA_ENV=dompc_dev

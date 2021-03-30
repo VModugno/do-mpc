@@ -3,22 +3,120 @@ from casadi import *
 import do_mpc
 
 class DifferentialDriveExperiment:
-    def __init__(self,axle_lenghts,wheel_radii,true_axle_length=None,true_wheel_radius=None):
-        if len(axle_lenghts)==1 and true_axle_length or len(wheel_radii)==1 and true_wheel_radius:
-            raise Exception("You cannot specify true parameters in a non-scenario setting: in non-scenario setting simulator uses the model values")
-        self.delta_t = 0.01 # Euler sampling interval and controller interval
-        self.axle_lengths = axle_lenghts
-        self.wheel_radii = wheel_radii
-        self.true_axle_length = true_axle_length  if true_axle_length else axle_lenghts[0] #axle length used in the simulator and in the visualization
-        self.true_wheel_radius =  true_wheel_radius if true_wheel_radius else wheel_radii[0] #wheel radius used in the simulator and in the visualization
+    def __init__(self,axle_lengths_dict,wheel_radii_dict):
+        
+        self.preprocess_axle_info(axle_lengths_dict)
+        self.preprocess_wheel_info(wheel_radii_dict)
+        
+        #if for at the least one of the possible parameters of the model, user has defined custom probabilities 
+        #only one of the following situation are supported:
+        #the other parameter is a costant in the model so param1_probabilities=[some array] and param2_probabilities=None but param2 is constant
+        #the other parameter has a set of values > 1 and user has provided a set of custom probabilities also for them param1_probabilities=[some array] param2_probabilities=[some array]
+        #the other parameter is not a costant but has a single value and we can set its probability to one
+
+        if self.axle_probabilities: 
+            if not self.wheel_probabilities:
+                if len(self.wheel_radii1)>1:
+                    raise Exception("Custom probabilities provided for a multihypothesis param: the axle, but not for the other, the wheel radius")   
+                else:
+                    if self.is_wheel_radius_param:
+                        self.wheel_probabilities = [1] 
+                    else:
+                        print ("ok only axle prob assigned but the other param has a single value and it will be embedded")   
+            else:
+                print ("ok both weigths assigned")
+        else:
+            if self.wheel_probabilities:
+                if len(self.axle_probabilities)>1:
+                    raise Exception("Custom probabilities provided for a multihypothesis param: the wheel radius, but not for the other, the axle length") 
+                else:
+                    if self.is_axle_length_param:
+                        self.axle_probabilities = [1]
+                    else:
+                       print ("ok only wheel prob assigned but the other param has a single value and it will be embedded")
+            else:
+                print ("ok both weights are not assigned so the library will assign the same prob to each scenario")      
+                 
+                        
+
+        self.delta_t = 0.01 # Euler sampling interval and controller interval    
+        
         self.min_wheel_ang_vel = -2
         self.max_wheel_ang_vel = 2
+        
         self.n_horizon = 50 # prediction horizion
         self.n_robust = 1 # robust horizon (if scenario based experiment)
+        
         self._model = None
         self._mpc = None
         self._estimator = None
         self._simulator = None
+
+    def preprocess_axle_info(self,axle_length_info):
+        #Assumption: axle_length_info is a dict with the following structure 
+        # {'values':[list of values also only one], #mandatory
+        #  'probs':[list of the probabilities of the axle_values], #optional 
+        #  'true_value': groundtruth length value} #optional
+        assert 'values' in axle_length_info.keys(),'values is a mandatory key in axle_length_info'
+        assert isinstance(axle_length_info['values'], list),'axle length values have to be provided as a list'
+        assert len(axle_length_info['values'])>0 ,'at the least one value for the axle parameter has to be provided'
+        #in theory I had also to check that the length values are numbers
+        self.axle_lengths = axle_length_info['values']
+
+        self.is_axle_length_param = True
+        self.true_axle_length = None
+        self.axle_probabilities = None
+        if len(axle_length_info['values'])==1: #a single value for the axle length has been provided
+            if('probs'in axle_length_info.keys()):
+                raise Exception("Probability of axle length are not meanigful if only one single value is provided")
+            else:
+                if 'true_value'in axle_length_info.keys():
+                    self.true_axle_length = axle_length_info['true_value']
+                else:
+                    self.is_axle_length_param = False #if axle length has a single value and the simulator will use the same value no need to do it as a param
+                    self.true_axle_length = self.axle_lengths[0] #only for graphics the true value in the simulator is embedded
+        else: # more than one value has been provided for the axle length
+            if('probs' in axle_length_info.keys()):
+                assert isinstance(axle_length_info['probs'], list),'probability of the hypothesis can be provided only through a list'
+                assert len(axle_length_info['values'])==len(axle_length_info['probs']), 'axle probabilities have to be in the same number of the axle lengths'
+                self.axle_probabilities = axle_length_info['probs']
+            if('true_value' in axle_length_info.keys()):
+                self.true_axle_length = axle_length_info['true_value']
+            else:
+                self.true_axle_length = self.axle_lengths[0]
+    
+    def preprocess_wheel_info(self, wheel_radii_info):
+        #Assumption: wheel_radii_info is a dict with following structure 
+        # {'values':[list of possible wheel radii, at the least one], #mandatory
+        #  'probs':[list of the probabilities of the wheel_radii_values], #optional 
+        #  'true_value': groundtruth radii value} #optional
+        assert 'values' in wheel_radii_info.keys(),'values is a mandatory key in the wheel radii dict'
+        assert isinstance(wheel_radii_info['values'], list),'wheel radii values have to be provided as a list'
+        assert len(wheel_radii_info['values'])>0 ,'at the least one value for the wheel radii parameter has to be provided'
+        #in theory I had also to check that the radii values provided are all numeric
+        self.wheel_radii = wheel_radii_info['values']
+
+        self.is_wheel_radius_param = True
+        self.true_wheel_radius = None
+        self.wheel_probabilities = None
+        if len(wheel_radii_info['values'])==1: #it has been provided only a SINGLE value for the wheel radius
+            if('probs'in wheel_radii_info.keys()):
+                raise Exception("Probability of a wheel radii are not meanigful if only one single value is provided")
+            else:
+                if 'true_value'in wheel_radii_info.keys():
+                    self.true_wheel_radius = wheel_radii_info['true_value']
+                else:
+                    self.is_wheel_radius_param = False #if wheel radius has a single value and the simulator will use the same value, no need for parametrize it
+                    self.true_wheel_radius = self.wheel_radii[0]  #only for graphics the true value in the simulator is embedded
+        else: # more than one value has been provided for the wheel radius
+            if('probs' in wheel_radii_info.keys()):
+                assert isinstance( wheel_radii_info['probs'], list),'probability of the hypothesis can be provided only through a list'
+                assert len( wheel_radii_info['values'])==len(wheel_radii_info['probs']), 'wheel radii probabilities must have the same size of wheel radii values'
+                self.wheel_probabilities = wheel_radii_info['probs']
+            if('true_value' in wheel_radii_info.keys()):
+                self.true_wheel_radius = wheel_radii_info['true_value']
+            else:
+                self.true_wheel_radius = self.wheel_radii[0]         
 
     @property
     def model(self):
@@ -44,17 +142,16 @@ class DifferentialDriveExperiment:
             self._setup_differential_drive_simulator()
         return self._simulator
 
+    
+    #True if axle length or wheel radius are parameters (also if a single value is provided for them)
     @property
-    def is_axle_lenght_param(self):
-        return len(self.axle_lengths)>1
-
-    @property
-    def is_wheel_radii_param(self):
-        return len(self.wheel_radii)>1
-
+    def is_a_parametrized_model(self):
+        return self.is_axle_length_param or self.is_wheel_radius_param
+    
+    #True if axle length or wheel radius are parameters and more than one possible value is provided at least for one of them
     @property
     def is_scenario_based(self):
-        return self.is_axle_lenght_param or self.is_wheel_radii_param
+        return self.is_a_parametrized_model and len(self.axle_lengths)>1 or len(self.wheel_radii)>1
 
     def _setup_differential_drive_model(self):
         model_type = 'discrete'
@@ -62,16 +159,16 @@ class DifferentialDriveExperiment:
         # Euler sampling interval
         delta_t = self.delta_t
         # Verify if L, distance between wheels, is an uncertain parameter
-        if self.is_axle_lenght_param:
+        if self.is_axle_length_param:
             L = model.set_variable('_p', 'L')
         else:
-            # Single hypothesis for L intrawheels
+            # L, the intrawheels distance, is not a parameter and it is embedded in the model
             L = self.axle_lengths[0]
         # Verify if r, distance between wheels is an uncertain parameter
-        if self.is_wheel_radii_param:
+        if self.is_wheel_radius_param:
             r = model.set_variable('_p', 'r')
         else:
-            # Single hypothesis for r, wheel radius
+            # r is not a parameter and it is embedded in the model
             r = self.wheel_radii[0]
 
         # input angular velocities of the left (u_l) and right (u_r) wheels
@@ -134,14 +231,20 @@ class DifferentialDriveExperiment:
         mpc.bounds['lower','_u','u_r'] = self.min_wheel_ang_vel
         mpc.bounds['upper','_u','u_r'] = self.max_wheel_ang_vel
 
-        if self.is_axle_lenght_param:
-            if self.is_wheel_radii_param:
+        if self.is_axle_length_param:
+            if self.is_wheel_radius_param:
                 mpc.set_uncertainty_values(L=self.axle_lengths, r=self.wheel_radii)
+                if (self.axle_probabilities): #if true also wheel_probability are defined for the check in the constructor
+                    mpc.set_uncertainty_weights(L=self.axle_probabilities, r=self.wheel_probabilities)
             else:
                 mpc.set_uncertainty_values(L=self.axle_lengths)
+                if (self.axle_probabilities): 
+                    mpc.set_uncertainty_weights(L=self.axle_probabilities)
         else:
-            if self.is_wheel_radii_param:
+            if self.is_wheel_radius_param:
                 mpc.set_uncertainty_values(r=self.wheel_radii)
+                if (self.wheel_probabilities): 
+                    mpc.set_uncertainty_weights(r=self.wheel_probabilities)
         mpc.setup()
         self._mpc = mpc
 
@@ -153,7 +256,7 @@ class DifferentialDriveExperiment:
         # Create simulator in order to run MPC in a closed-loop
         simulator = do_mpc.simulator.Simulator(self.model)
         simulator.set_param(t_step=self.delta_t)
-        if self.is_scenario_based:
+        if self.is_a_parametrized_model:
             p_template = simulator.get_p_template()
             def p_fun(t_now):
                 if 'L' in p_template.keys():
