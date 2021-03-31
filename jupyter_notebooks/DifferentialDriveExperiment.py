@@ -16,7 +16,7 @@ class DifferentialDriveExperiment:
 
         if self.axle_probabilities: 
             if not self.wheel_probabilities:
-                if len(self.wheel_radii1)>1:
+                if len(self.wheel_radii)>1:
                     raise Exception("Custom probabilities provided for a multihypothesis param: the axle, but not for the other, the wheel radius")   
                 else:
                     if self.is_wheel_radius_param:
@@ -27,7 +27,7 @@ class DifferentialDriveExperiment:
                 print ("ok both weigths assigned")
         else:
             if self.wheel_probabilities:
-                if len(self.axle_probabilities)>1:
+                if len(self.axle_lengths)>1:
                     raise Exception("Custom probabilities provided for a multihypothesis param: the wheel radius, but not for the other, the axle length") 
                 else:
                     if self.is_axle_length_param:
@@ -143,15 +143,29 @@ class DifferentialDriveExperiment:
         return self._simulator
 
     
+
+
+    
     #True if axle length or wheel radius are parameters (also if a single value is provided for them)
     @property
     def is_a_parametrized_model(self):
         return self.is_axle_length_param or self.is_wheel_radius_param
     
+    @property
+    def is_fully_parametrized_model(self):
+        return self.is_axle_length_param and self.is_wheel_radius_param
+    
     #True if axle length or wheel radius are parameters and more than one possible value is provided at least for one of them
     @property
     def is_scenario_based(self):
         return self.is_a_parametrized_model and len(self.axle_lengths)>1 or len(self.wheel_radii)>1
+
+    @property
+    def is_custom_weighted_scenario_based(self):
+        if self.is_fully_parametrized_model:
+            return not self.axle_probabilities is None and not self.wheel_probabilities is None #the first check is enough
+        #here if at least one in [axle_length, wheel_radius] is not a parameter
+        return not self.axle_probabilities is None or not self.wheel_probabilities is None
 
     def _setup_differential_drive_model(self):
         model_type = 'discrete'
