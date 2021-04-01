@@ -211,7 +211,7 @@ class DifferentialDriveExperiment:
         model.set_rhs('theta', theta_next)
 
         # auxiliary expressions for the quadratic distance to the origin
-        model.set_expression('distance', x**2+y**2)
+        model.set_expression('squared_distance', x**2+y**2)
         model.set_expression('zero',x-x)
         model.set_expression('position_norm', sqrt(x**2+y**2))
         model.setup()
@@ -227,15 +227,18 @@ class DifferentialDriveExperiment:
         'n_horizon': self.n_horizon, # prediction horizion
         'n_robust': n_robust, # robust horizon
         'open_loop': 0, # if set to false, for each time step and scenario an individual control input it computed
+        'state_discretization': 'discrete',
         't_step': self.delta_t,  # timestep of the mpc
         'store_full_solution': True, # choose whether to store the full solution of the optimization problem
         # Use MA27 linear solver in ipopt for faster calculations:
-        'nlpsol_opts': {'ipopt.linear_solver': 'mumps'}
+        #'nlpsol_opts': {'ipopt.linear_solver': 'mumps'}
         }
         mpc.set_param(**setup_mpc)
 
-        mterm = self.model.aux['distance'] # "naive" terminal cost
-        lterm = self.model.aux['zero']
+        mterm = self.model.aux['squared_distance'] # "naive" terminal cost
+        #lterm = self.model.aux['zero']
+        #lterm = self.model.aux['squared_distance']
+        lterm = self.model.aux['position_norm']
         mpc.set_objective(mterm=mterm,lterm=lterm) # "naive" cost function
         mpc.set_rterm(u_l=0, u_r=0) # smooth factor for the penalization for the module of the input: currently no penalization are taking into account (to be defined)
 
