@@ -1,4 +1,5 @@
 import numpy as np
+
 import gym
 from gym import Env
 from gym.spaces import Box
@@ -71,9 +72,12 @@ class DifferentialDriveEnv(Env):
     self.state = np.array([self.np_random.uniform(low=self.min_position[0], high=self.max_position[0]), self.np_random.uniform(low=self.min_position[0], high=self.max_position[0]), math.pi/2])
     return np.array(self.state)
 
-  def render(self, mode='human', close=False):
-    # Render the environment to the screen
-    pass
+  def render(self, mode='console', close=False):
+    if mode is 'console':
+      print("========================================================")
+      print(">> Pos: x = ",self.state[0],"; y = ",self.state[1])
+      print(">> Ori: ",self.state[2])
+      print("========================================================")
 
   def step(self, action):
     x = self.state[0]
@@ -85,7 +89,7 @@ class DifferentialDriveEnv(Env):
 
     x = x + v * self.delta_t * math.cos(theta)
     y = y + v * self.delta_t * math.sin(theta)
-    theta_next = theta + w * self.delta_t
+    theta = theta + w * self.delta_t
 
     done = bool(
         [x, y] == self.goal_position
@@ -94,7 +98,11 @@ class DifferentialDriveEnv(Env):
     reward = 0
     if done:
         reward = 100.0
-    reward -= math.pow(action[0], 2) * 0.1
+    # reward -= math.pow(action[0], 2) * 0.1
+    reward -= np.linalg.norm(np.array(self.goal_position)-np.array([x, y]))/10
+
+    info = {}
 
     self.state = np.array([x, y, theta])
-    return self.state, reward, done, {}
+
+    return self.state, reward, done, info
