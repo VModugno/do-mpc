@@ -19,8 +19,9 @@ You may be required to add your user in the docker group, 'sudo usermod -a -G do
 Once the amr_do_mpc is built:
 5.a)use the run_amr_do_mpc.sh script (with no parameters) to run the container: with this script you are going to test the version of the repo that is cloned in the image when the image has been built
 5.b)or use one of the following command to test a version of the code in the host (previously created as described in 3):
-   run_amr_do_mpc.sh hostrepo
-   dev_run_amr_dompc.sh (that simply run the previous command avoiding to insert params)
+   run_amr_do_mpc.sh -r [-n]
+   Use the -n option to run the docker image with nvidia-docker (you have to install it on your host machine before) in case you have an nvdia host and you want to use the host xserver. Otherwise any graphical application will be rendered in a virtual frame buffer through xvfb
+   dev_run_amr_dompc.sh (that simply run the previous command avoiding - with the -n option included)
 the result of both those commands is that the local copy of the code (<where you want>/do-mpc)  is mounted in the container in /workdir/amr_dompc (where the code of the library is cloned when the image is created) 
 in RW mode and shadows the version cloned during the image building process
 

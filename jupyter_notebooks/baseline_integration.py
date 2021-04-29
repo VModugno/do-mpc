@@ -225,8 +225,8 @@ def robot_linear_velocity(u_l,u_r,L=axle_length, r=wheel_radius):
 
 def main():
     check_diff_drive_env()
-    init_pose = init_pose = [-0.05, -0.25, -np.pi/2]
-    init_pose = init_pose = [0.12, -0.25, -np.pi/2]
+    #init_pose  = [-0.05, -0.25, -np.pi/2]
+    init_pose  = [0.12, -0.25, -np.pi/2]
     obss, actions = load_and_run_model(ppo2_model_name,1000,init_pose)
     print("I have {} observations and {} actions ".format(len(obss),len(actions)))
     show_rl_trajectory(obss,actions)
