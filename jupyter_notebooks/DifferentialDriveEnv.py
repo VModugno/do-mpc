@@ -12,7 +12,7 @@ class DifferentialDriveEnv(Env):
   # metadata = {'render.modes': ['human']}
   metadata = {'render.modes': ['console']}
 
-  def __init__(self, L, r, delta_t = 0.01, goal_position=[0,0], min_action=-10, max_action=10, min_position=[-100,-100], max_position=[100,100]):
+  def __init__(self, L, r, delta_t = 0.01, init_position=None, goal_position=[0,0], min_action=-5, max_action=5, min_position=[-10,-10], max_position=[10,10]):
     super(DifferentialDriveEnv, self).__init__()
 
     #Define model parameters
@@ -31,10 +31,13 @@ class DifferentialDriveEnv(Env):
     self.min_orientation = -math.pi
     self.max_orientation = math.pi
     
+    self.init_position = init_position
     self.goal_position = goal_position
+
     # self.goal_velocity = goal_velocity
     # self.goal_orientation = goal_orientation
 
+    self.max_duration = 500
     
     self.low_state = np.array(
         self.min_position+[self.min_orientation], dtype=np.float32
@@ -49,6 +52,8 @@ class DifferentialDriveEnv(Env):
     self.action_space = Box(
         low=self.min_action,
         high=self.max_action,
+        #low=-1,
+        #high=1,
         shape=(2,),
         dtype=np.float32
     )
@@ -69,7 +74,19 @@ class DifferentialDriveEnv(Env):
 
   def reset(self):
     # Reset the state of the environment to an initial state
-    self.state = np.array([self.np_random.uniform(low=self.min_position[0], high=self.max_position[0]), self.np_random.uniform(low=self.min_position[0], high=self.max_position[0]), math.pi/2])
+
+    if self.init_position is None:
+      self.state = np.array([self.np_random.uniform(low=-3, high=-2), self.np_random.uniform(low=-2, high=-1), -math.pi/2])
+      # self.state = np.array([self.np_random.uniform(low=self.min_position[0], high=self.max_position[0]), self.np_random.uniform(low=self.min_position[0], high=self.max_position[0]), math.pi/2])
+    elif isinstance(self.init_position, list):
+      if len(self.init_position) == 3:
+        self.state = np.array(self.init_position)
+      else:
+        raise Exception("Initial position must be size 3: [x, y, theta]")
+    else:
+      raise Exception("Initial position must be a list: [x, y, theta]")
+    self.max_duration = 500
+
     return np.array(self.state)
 
   def render(self, mode='console', close=False):
@@ -91,18 +108,30 @@ class DifferentialDriveEnv(Env):
     y = y + v * self.delta_t * math.sin(theta)
     theta = theta + w * self.delta_t
 
+    threshold = 0.01
+    
     done = bool(
-        [x, y] == self.goal_position
+        np.linalg.norm(np.array(self.goal_position)-np.array([x, y])) <= threshold
     )
 
     reward = 0
     if done:
         reward = 100.0
     # reward -= math.pow(action[0], 2) * 0.1
-    reward -= np.linalg.norm(np.array(self.goal_position)-np.array([x, y]))/10
+    reward -= float(np.linalg.norm(np.array(self.goal_position)-np.array([x, y]))/10)
+
+    if self.max_duration <= 0: 
+            done = True
+    else:
+            done = False
 
     info = {}
 
     self.state = np.array([x, y, theta])
 
+    self.max_duration -= 1
+
     return self.state, reward, done, info
+
+  def close(self):
+    pass
