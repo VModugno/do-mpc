@@ -282,32 +282,36 @@ class DifferentialDriveExperiment:
         mpc.bounds['upper','_u','u_r'] = self.max_wheel_ang_vel
 
         if self.tracking_trajectory_mode:
-            tvp_template = mpc.get_tvp_template()
+            tvp_template_mpc = mpc.get_tvp_template()
             
-            def tvp_fun(t_now):
+            def tvp_fun_mpc(t_now):
                 for k in range(self.n_horizon+1):
                     curr_trj = self.tracking_trajectories[0]
-                    if (t_now+k) < len(curr_trj['path']):
-                        path_index = t_now + k
+                    #print("CURR TRAJ PATH {}".format(curr_trj['path']))
+                    
+                    base_index = int(t_now / self.delta_t)
+                    #print("t_now val {} type {} base_index value {}".format(t_now,type(t_now),base_index))
+                    if (base_index + k) < len(curr_trj['path']):
+                        path_index = base_index + k
                     else:
                         path_index = -1
-                    tvp_template['_tvp',k,'x_ref'] =  curr_trj['path'][path_index][0]
-                    tvp_template['_tvp',k,'y_ref'] = curr_trj['path'][path_index][1]
-                    tvp_template['_tvp',k,'theta_ref'] = curr_trj['path'][path_index][2]
-                    if (t_now+k) < len(curr_trj['actions']):
-                        act_index = t_now + k
+                    tvp_template_mpc['_tvp',k,'x_ref'] = curr_trj['path'][path_index][0]
+                    tvp_template_mpc['_tvp',k,'y_ref'] = curr_trj['path'][path_index][1]
+                    tvp_template_mpc['_tvp',k,'theta_ref'] = curr_trj['path'][path_index][2]
+                    if (base_index + k) < len(curr_trj['actions']):
+                        act_index = base_index + k
                     else:
                         act_index = -1 
-                    tvp_template['_tvp',k,'u_l_ref'] = curr_trj['actions'][act_index][0]
-                    tvp_template['_tvp',k,'u_r_ref'] = curr_trj['actions'][act_index][1]
+                    tvp_template_mpc['_tvp',k,'u_l_ref'] = curr_trj['actions'][act_index][0]
+                    tvp_template_mpc['_tvp',k,'u_r_ref'] = curr_trj['actions'][act_index][1]
                     #tvp_template['_tvp',k,'x_ref'] =10
                     #tvp_template['_tvp',k,'y_ref'] = 20
                     #tvp_template['_tvp',k,'theta_ref'] = 20
                     #tvp_template['_tvp',k,'u_l_ref'] = 20
                     #tvp_template['_tvp',k,'u_r_ref'] = 2
-                return tvp_template
-            
-            mpc.set_tvp_fun(tvp_fun)
+                return tvp_template_mpc
+
+            mpc.set_tvp_fun(tvp_fun_mpc)
         
         if self.is_axle_length_param:
             if self.is_wheel_radius_param:
@@ -350,15 +354,17 @@ class DifferentialDriveExperiment:
             # Define the function (indexing is much simpler ...)
             def tvp_fun(t_now):
                 curr_trj = self.tracking_trajectories[0]
-                if (t_now) < len(curr_trj['path']):
-                    path_index = t_now
+                #print("CURR TRAJ {}".format(curr_trj))
+                base_index = int(t_now / self.delta_t)
+                if (base_index) < len(curr_trj['path']):
+                    path_index = base_index
                 else:
                     path_index = -1
                 tvp_template['x_ref'] = curr_trj['path'][path_index][0]
                 tvp_template['y_ref'] = curr_trj['path'][path_index][1]
                 tvp_template['theta_ref'] = curr_trj['path'][path_index][2]
-                if (t_now) < len(curr_trj['actions']):
-                    act_index = t_now
+                if (base_index) < len(curr_trj['actions']):
+                    act_index = base_index
                 else:
                     act_index = -1
                 tvp_template['u_l_ref'] = curr_trj['actions'][act_index][0]

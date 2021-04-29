@@ -5,6 +5,7 @@ import gym
 from gym import Env
 from gym.spaces import Box
 from gym.utils import seeding
+import matplotlib.pyplot as plt
 
 import math
 
@@ -164,8 +165,6 @@ def load_and_run_model(model_name,n_steps,init_pose=None):
         #print("Current x: {} current y: {}".format(obs[0],obs[1]))
         #env.render(mode = 'console')
     return obs_list, action_list
-
-import matplotlib.pyplot as plt
     
 def robot_linear_velocity(u_l,u_r,L=axle_length, r=wheel_radius):
     v = (u_l + u_r)* w_radius/2
@@ -194,7 +193,15 @@ def show_rl_trajectory(obs_list,act_list):
     def on_close(event):
         print('Closed Figure!')
         
-    fig, ax = plt.subplots(4)
+    fig, ax = plt.subplots(4,figsize=(15,15))
+    plt.subplots_adjust(left=0.1, bottom=0.1, right=0.9, top=0.9, wspace=2.0, hspace=0.5)
+
+    #left  = 0.125  # the left side of the subplots of the figure
+    #right = 0.9    # the right side of the subplots of the figure
+    #bottom = 0.1   # the bottom of the subplots of the figure
+    #top = 0.9      # the top of the subplots of the figure
+    #wspace = 0.2   # the amount of width reserved for blank space between subplots
+    #hspace = 0.2   # the amount of height reserved for white space between subplots
     fig.canvas.mpl_connect('close_event', on_close)
     ax[0].scatter(x_values, y_values,color='blue')
     ax[0].set_title("Path")
