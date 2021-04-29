@@ -1,6 +1,7 @@
 import numpy as np
 import do_mpc
 from DifferentialDriveExperiment import DifferentialDriveExperiment 
+import baseline_dompc_utils
 
 #https://docs.pytest.org/en/stable/getting-started.html
 #pytest -q test_differential_drive_experiment.py
@@ -312,6 +313,32 @@ class TestDifferentialDriveExperiment:
         assert len(experiment.wheel_probabilities) == len(experiment.wheel_radii)
         assert experiment.true_axle_length == 0.48
         assert experiment.true_wheel_radius == 0.1
-    
+        assert experiment.regulation_mode
+        assert not experiment.tracking_trajectory_mode
+    #those tests are for the forward term integration
+
+    def test_seventeen_trajectory_tracking_single_trajectory(self):
+
+        experiment = DifferentialDriveExperiment(
+                axle_lengths_dict={'values':[0.48,0.5,0.53], 'probs':[0.35,0.25,0.4]}, 
+                wheel_radii_dict={'values':[0.1, 0.15, 0.20],'probs':[0.25,0.4,0.25]},
+                tracking_trajectories=[{'L':0.5,'r':0.53,'path':[[1,2,3],[4,5,6]],'actions':[[-1,-2],[-3,-4]]}])
+        init_robot_pose = {'x': -0.5, 'y': 0.0, 'theta': np.pi/2}
+        experiment.setup_experiment(init_robot_pose)
+
+        assert experiment.is_a_parametrized_model
+        assert experiment.is_axle_length_param
+        assert experiment.is_wheel_radius_param
+        assert experiment.is_scenario_based
+        assert experiment.is_custom_weighted_scenario_based
+        assert not experiment.axle_probabilities == None
+        assert len(experiment.axle_probabilities) == len(experiment.axle_lengths)
+        assert not experiment.wheel_probabilities == None
+        assert len(experiment.wheel_probabilities) == len(experiment.wheel_radii)
+        assert experiment.true_axle_length == 0.48
+        assert experiment.true_wheel_radius == 0.1
+
+        #assert experiment.tracking_trajectory_mode
+
     
     

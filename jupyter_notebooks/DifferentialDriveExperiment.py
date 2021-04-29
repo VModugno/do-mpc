@@ -3,12 +3,12 @@ from casadi import *
 import do_mpc
 
 class DifferentialDriveExperiment:
-    def __init__(self,axle_lengths_dict,wheel_radii_dict):
-        
+    def __init__(self,axle_lengths_dict,wheel_radii_dict, tracking_trajectories=None):
+        #tracking_trajectories is an array of hashes like this {'L':..,'r':,'path':[[x0,y0,theta0],[x1,y1,theta1],...],'actions':[[u_l0,u_r0],[u_l0,u_r0],...]}
         self.preprocess_axle_info(axle_lengths_dict)
         self.preprocess_wheel_info(wheel_radii_dict)
         
-        #if for at the least one of the possible parameters of the model, user has defined custom probabilities 
+        #if, for at the least one of the possible parameters of the model, user has defined the probabilities 
         #only one of the following situation are supported:
         #the other parameter is a costant in the model so param1_probabilities=[some array] and param2_probabilities=None but param2 is constant
         #the other parameter has a set of values > 1 and user has provided a set of custom probabilities also for them param1_probabilities=[some array] param2_probabilities=[some array]
@@ -36,8 +36,10 @@ class DifferentialDriveExperiment:
                        print ("ok only wheel prob assigned but the other param has a single value and it will be embedded")
             else:
                 print ("ok both weights are not assigned so the library will assign the same prob to each scenario")      
-                 
-                        
+
+        self.tracking_trajectories = tracking_trajectories
+
+        self.regulation_mode = bool(self.tracking_trajectories == None)           
 
         self.delta_t = 0.01 # Euler sampling interval and controller interval    
         
@@ -51,6 +53,7 @@ class DifferentialDriveExperiment:
         self._mpc = None
         self._estimator = None
         self._simulator = None
+        
 
     def preprocess_axle_info(self,axle_length_info):
         #Assumption: axle_length_info is a dict with the following structure 
@@ -93,7 +96,7 @@ class DifferentialDriveExperiment:
         assert 'values' in wheel_radii_info.keys(),'values is a mandatory key in the wheel radii dict'
         assert isinstance(wheel_radii_info['values'], list),'wheel radii values have to be provided as a list'
         assert len(wheel_radii_info['values'])>0 ,'at the least one value for the wheel radii parameter has to be provided'
-        #in theory I had also to check that the radii values provided are all numeric
+        #in theory I should also to check that the radii values provided are all numeric
         self.wheel_radii = wheel_radii_info['values']
 
         self.is_wheel_radius_param = True
@@ -141,11 +144,11 @@ class DifferentialDriveExperiment:
         if not self._simulator:
             self._setup_differential_drive_simulator()
         return self._simulator
-
     
-
-
-    
+    @property
+    def tracking_trajectory_mode(self):
+        return not self.regulation_mode
+ 
     #True if axle length or wheel radius are parameters (also if a single value is provided for them)
     @property
     def is_a_parametrized_model(self):
@@ -184,7 +187,8 @@ class DifferentialDriveExperiment:
         else:
             # r is not a parameter and it is embedded in the model
             r = self.wheel_radii[0]
-
+        
+       
         # input angular velocities of the left (u_l) and right (u_r) wheels
         u_l = model.set_variable('_u', 'u_l')
         u_r = model.set_variable('_u', 'u_r')
@@ -202,6 +206,20 @@ class DifferentialDriveExperiment:
         y = model.set_variable('_x', 'y')
         theta = model.set_variable('_x', 'theta')
 
+        #time varying parameters for trajectory tracking
+        if self.tracking_trajectory_mode:
+            x_ref = model.set_variable(var_type='_tvp', var_name='x_ref')
+            y_ref = model.set_variable(var_type='_tvp', var_name='y_ref')
+            theta_ref = model.set_variable(var_type='_tvp', var_name='theta_ref')
+            u_l_ref = model.set_variable(var_type='_tvp', var_name='u_l_ref')
+            u_r_ref = model.set_variable(var_type='_tvp', var_name='u_r_ref')
+        else:
+            x_ref = 0
+            y_ref = 0
+            theta_ref = 0
+            u_l_ref = 0
+            u_r_ref = 0
+
         # right-hand side of the dynamics
         x_next = x + v * delta_t * cos(theta)
         y_next = y + v * delta_t * sin(theta)
@@ -211,9 +229,17 @@ class DifferentialDriveExperiment:
         model.set_rhs('theta', theta_next)
 
         # auxiliary expressions for the quadratic distance to the origin
-        model.set_expression('squared_distance', x**2+y**2)
+        model.set_expression('squared_distance_to_target', x**2+y**2)
         model.set_expression('zero',x-x)
         model.set_expression('position_norm', sqrt(x**2+y**2))
+        
+        #expressions for trajectory tracking
+        if self.tracking_trajectory_mode:
+            #model.set_expression('squared_trajectory_error',(x-x_ref)**2+(y-y_ref)**2)
+            model.set_expression('squared_trajectory_error', (x-x_ref)**2+(y-y_ref)**2)
+            model.set_expression('trajectory_error',sqrt((x-x_ref)**2+(y-y_ref)**2))
+            model.set_expression('orientation_trajectory_difference',atan2(sin(theta-theta_ref),cos(theta-theta_ref)))
+            model.set_expression('squared_action_trajectory_error',(u_l-u_l_ref)**2+(u_r-u_r_ref)**2)
         model.setup()
 
         self._model = model
@@ -235,19 +261,54 @@ class DifferentialDriveExperiment:
         }
         mpc.set_param(**setup_mpc)
 
-        mterm = self.model.aux['squared_distance'] # "naive" terminal cost
-        #lterm = self.model.aux['zero']
-        #lterm = self.model.aux['squared_distance']
-        lterm = self.model.aux['position_norm']
-        mpc.set_objective(mterm=mterm,lterm=lterm) # "naive" cost function
-        mpc.set_rterm(u_l=0, u_r=0) # smooth factor for the penalization for the module of the input: currently no penalization are taking into account (to be defined)
+        if self.regulation_mode:
+            mterm = self.model.aux['squared_distance_to_target'] # "naive" terminal cost
+            #lterm = self.model.aux['zero']
+            #lterm = self.model.aux['squared_distance_to_target']
+            lterm = self.model.aux['position_norm']
+        else:
+            mterm = self.model.aux['squared_trajectory_error'] # "naive" terminal cost for trajectory tracking
+            lterm = self.model.aux['trajectory_error'] 
+            
 
+        mpc.set_objective(mterm=mterm,lterm=lterm) # "naive" cost function
+        #mpc.set_rterm(u_l=1e-2, u_r=1e-2) # smooth factor for the penalization for the module of the input
+        mpc.set_rterm(u_l=0, u_r=0) # smooth factor for the penalization for the module of the input: currently no penalization are taking into account (to be defined)
+        
         # set the constraints of the control problem
         mpc.bounds['lower','_u','u_l'] = self.min_wheel_ang_vel
         mpc.bounds['upper','_u','u_l'] = self.max_wheel_ang_vel
         mpc.bounds['lower','_u','u_r'] = self.min_wheel_ang_vel
         mpc.bounds['upper','_u','u_r'] = self.max_wheel_ang_vel
 
+        if self.tracking_trajectory_mode:
+            tvp_template = mpc.get_tvp_template()
+            
+            def tvp_fun(t_now):
+                for k in range(self.n_horizon+1):
+                    curr_trj = self.tracking_trajectories[0]
+                    if (t_now+k) < len(curr_trj['path']):
+                        path_index = t_now + k
+                    else:
+                        path_index = -1
+                    tvp_template['_tvp',k,'x_ref'] =  curr_trj['path'][path_index][0]
+                    tvp_template['_tvp',k,'y_ref'] = curr_trj['path'][path_index][1]
+                    tvp_template['_tvp',k,'theta_ref'] = curr_trj['path'][path_index][2]
+                    if (t_now+k) < len(curr_trj['actions']):
+                        act_index = t_now + k
+                    else:
+                        act_index = -1 
+                    tvp_template['_tvp',k,'u_l_ref'] = curr_trj['actions'][act_index][0]
+                    tvp_template['_tvp',k,'u_r_ref'] = curr_trj['actions'][act_index][1]
+                    #tvp_template['_tvp',k,'x_ref'] =10
+                    #tvp_template['_tvp',k,'y_ref'] = 20
+                    #tvp_template['_tvp',k,'theta_ref'] = 20
+                    #tvp_template['_tvp',k,'u_l_ref'] = 20
+                    #tvp_template['_tvp',k,'u_r_ref'] = 2
+                return tvp_template
+            
+            mpc.set_tvp_fun(tvp_fun)
+        
         if self.is_axle_length_param:
             if self.is_wheel_radius_param:
                 mpc.set_uncertainty_values(L=self.axle_lengths, r=self.wheel_radii)
@@ -282,18 +343,56 @@ class DifferentialDriveExperiment:
                     p_template['r'] = self.true_wheel_radius
                 return p_template
             simulator.set_p_fun(p_fun)
+
+        if self.tracking_trajectory_mode:
+            # Get the template
+            tvp_template = simulator.get_tvp_template()
+            # Define the function (indexing is much simpler ...)
+            def tvp_fun(t_now):
+                curr_trj = self.tracking_trajectories[0]
+                if (t_now) < len(curr_trj['path']):
+                    path_index = t_now
+                else:
+                    path_index = -1
+                tvp_template['x_ref'] = curr_trj['path'][path_index][0]
+                tvp_template['y_ref'] = curr_trj['path'][path_index][1]
+                tvp_template['theta_ref'] = curr_trj['path'][path_index][2]
+                if (t_now) < len(curr_trj['actions']):
+                    act_index = t_now
+                else:
+                    act_index = -1
+                tvp_template['u_l_ref'] = curr_trj['actions'][act_index][0]
+                tvp_template['u_r_ref'] = curr_trj['actions'][act_index][1]
+                return tvp_template
+            # Set the tvp_fun:
+            simulator.set_tvp_fun(tvp_fun)
+
         simulator.setup()
         self._simulator = simulator
 
-    def setup_experiment(self,initial_pose):
+    def setup_experiment(self,initial_pose,initial_action_guess={'u_l':0,'u_r':0}):
         # Define the initial state of the system and set for all parts of the closed-loop configuration:
-        self.simulator.x0['x'] = initial_pose['x']
-        self.simulator.x0['y'] = initial_pose['y']
-        self.simulator.x0['theta'] =  initial_pose['theta']
+        #self.simulator.x0['x'] = initial_pose['x']
+        #self.simulator.x0['y'] = initial_pose['y']
+        #self.simulator.x0['theta'] =  initial_pose['theta']
 
-        x0 = self.simulator.x0.cat.full()
+        #x0 = self.simulator.x0.cat.full()
+        print(initial_pose.values())
+        x0_np = np.array([[initial_pose['x']],
+                          [initial_pose['y']],
+                          [initial_pose['theta']]
+                        ])
+        u0_np = np.array([[initial_action_guess['u_l']],
+                          [initial_action_guess['u_r']]
+                        ])
+        print(x0_np)
+        #self.mpc.x0 = x0
 
-        self.mpc.x0 = x0
-        self.estimator.x0 = x0
+        self.mpc.x0 = x0_np
+        self.simulator.x0 = x0_np
+        #self.estimator.x0 = x0
+        self.estimator.x0 = x0_np
 
         self.mpc.set_initial_guess()
+    
+    #def run_experiment
