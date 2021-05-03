@@ -102,6 +102,7 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         self.data_fields = [
             'n_horizon',
             'n_robust',
+            'scenario_tvp', 
             'open_loop',
             't_step',
             'use_terminal_bounds',
@@ -122,6 +123,7 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
 
         # Default Parameters (param. details in set_param method):
         self.n_robust = 0
+        self.scenario_tvp = False #added for tvp_scenario_based feature
         self.open_loop = False
         self.use_terminal_bounds = True
         self.state_discretization = 'collocation'
@@ -666,6 +668,69 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         assert self.get_p_template(self.n_combinations).labels() == p_fun(0).labels(), 'Incorrect output of p_fun. Use get_p_template to obtain the required structure.'
         self.flags['set_p_fun'] = True
         self.p_fun = p_fun
+    
+    # updated for tvp_scenario_based
+    def get_tvp_template(self, n_combinations=None):
+        # add an assert if scenario_tvp is true and n_combinations is None or if scenario_tvp is False and n_combinations is None
+        if (n_combinations==None):
+            return super().get_tvp_template()
+        else:
+            tvp_template = struct_symSX([
+            entry('_tvp', repeat=[n_combinations, self.n_horizon+1], struct=self.model._tvp)
+            ])
+            return tvp_template(0)
+    
+    # updated for tvp_scenario_based
+    def set_tvp_fun(self, tvp_fun, n_combinations=None):
+        """ Set function which returns time-varying parameters.
+
+        The ``tvp_fun`` is called at each optimization step to get the current prediction of the time-varying parameters.
+        The supplied function must be callable with the current time as the only input. Furthermore, the function must return
+        a CasADi structured object which is based on the horizon and on the model definition. The structure can be obtained with
+        :py:func:`get_tvp_template`.
+
+        **Example:**
+
+        ::
+
+            # in model definition:
+            alpha = model.set_variable(var_type='_tvp', var_name='alpha')
+            beta = model.set_variable(var_type='_tvp', var_name='beta')
+
+            ...
+            # in optimizer configuration:
+            tvp_temp_1 = optimizer.get_tvp_template()
+            tvp_temp_1['_tvp', :] = np.array([1,1])
+
+            tvp_temp_2 = optimizer.get_tvp_template()
+            tvp_temp_2['_tvp', :] = np.array([0,0])
+
+            def tvp_fun(t_now):
+                if t_now<10:
+                    return tvp_temp_1
+                else:
+                    tvp_temp_2
+
+            optimizer.set_tvp_fun(tvp_fun)
+
+        .. note::
+
+            The method :py:func:`set_tvp_fun`. must be called prior to setup IF time-varying parameters are defined in the model.
+            It is not required to call the method if no time-varying parameters are defined.
+
+        :param tvp_fun: Function that returns the predicted tvp values at each timestep. Must have single input (float) and return a ``structure3.DMStruct`` (obtained with :py:func:`get_tvp_template`).
+        :type tvp_fun: function
+
+        """
+        assert isinstance(tvp_fun(0), structure3.DMStruct), 'Incorrect output of tvp_fun. Use get_tvp_template to obtain the required structure.'
+        if(self.scenario_tvp):
+            tvp_temp = self.get_tvp_template(n_combinations)
+        else:
+            tvp_temp = super().get_tvp_template()
+        
+        assert tvp_temp.labels() == tvp_fun(0).labels(), 'Incorrect output of tvp_fun. Use get_tvp_template to obtain the required structure.'
+        self.flags['set_tvp_fun'] = True
+        self.tvp_fun = tvp_fun
 
     def set_uncertainty_weights(self,**kwargs):
 
@@ -1122,14 +1187,24 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         # opt_x are unphysical (scaled) variables. opt_x_unscaled are physical (unscaled) variables.
         self.opt_x_unscaled = opt_x_unscaled = opt_x(opt_x.cat * opt_x_scaling)
 
-
-        # Create struct for optimization parameters:
-        self.opt_p = opt_p = struct_symSX([
-            entry('_x0', struct=self.model._x),
-            entry('_tvp', repeat=self.n_horizon+1, struct=self.model._tvp),
-            entry('_p', repeat=self.n_combinations, struct=self.model._p),
-            entry('_u_prev', struct=self.model._u),
-        ])
+        # updated for tvp_scenario_based
+        if self.scenario_tvp:
+            self.opt_p = opt_p = struct_symSX([
+                entry('_x0', struct=self.model._x),
+                entry('_tvp', repeat=[self.n_combinations, self.n_horizon+1], struct=self.model._tvp),
+                entry('_p', repeat=self.n_combinations, struct=self.model._p),
+                entry('_u_prev', struct=self.model._u),
+            ])
+        
+        else:
+            #standard behavior
+            # Create struct for optimization parameters:
+            self.opt_p = opt_p = struct_symSX([
+                entry('_x0', struct=self.model._x),
+                entry('_tvp', repeat=self.n_horizon+1, struct=self.model._tvp),
+                entry('_p', repeat=self.n_combinations, struct=self.model._p),
+                entry('_u_prev', struct=self.model._u),
+            ])
         _w = self.model._w(0)
 
         self.n_opt_p = opt_p.shape[0]
@@ -1182,9 +1257,16 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                     # Compute constraints and predicted next state of the discretization scheme
                     col_xk = vertcat(*opt_x['_x', k+1, child_scenario[k][s][b], :-1])
                     col_zk = vertcat(*opt_x['_z', k, child_scenario[k][s][b]])
-                    [g_ksb, xf_ksb] = ifcn(opt_x['_x', k, s, -1], col_xk,
-                                           opt_x['_u', k, s], col_zk, opt_p['_tvp', k],
-                                           opt_p['_p', current_scenario], _w)
+                    # updated for tvp_scenario_based
+                    if self.scenario_tvp:
+                        [g_ksb, xf_ksb] = ifcn(opt_x['_x', k, s, -1], col_xk,
+                                            opt_x['_u', k, s], col_zk, opt_p['_tvp', current_scenario, k],
+                                            opt_p['_p', current_scenario], _w)
+                    # standard behavior
+                    else:
+                        [g_ksb, xf_ksb] = ifcn(opt_x['_x', k, s, -1], col_xk,
+                                            opt_x['_u', k, s], col_zk, opt_p['_tvp', k],
+                                            opt_p['_p', current_scenario], _w)
 
                     # Add the collocation equations
                     cons.append(g_ksb)
@@ -1199,17 +1281,31 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                     if self.nl_cons_check_colloc_points:
                         # Ensure nonlinear constraints on all collocation points
                         for i in range(n_total_coll_points):
-                            nl_cons_k = self._nl_cons_fun(
-                                opt_x_unscaled['_x', k, s, i], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, i],
-                                opt_p['_tvp', k], opt_p['_p', current_scenario], opt_x_unscaled['_eps', k, s])
+                            # updated for tvp_scenario_based
+                            if self.scenario_tvp:
+                                nl_cons_k = self._nl_cons_fun(
+                                    opt_x_unscaled['_x', k, s, i], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, i],
+                                    opt_p['_tvp',current_scenario, k], opt_p['_p', current_scenario], opt_x_unscaled['_eps', k, s])
+                            #standard behavior
+                            else:
+                                nl_cons_k = self._nl_cons_fun(
+                                    opt_x_unscaled['_x', k, s, i], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, i],
+                                    opt_p['_tvp', k], opt_p['_p', current_scenario], opt_x_unscaled['_eps', k, s])
                             cons.append(nl_cons_k)
                             cons_lb.append(self._nl_cons_lb)
                             cons_ub.append(self._nl_cons_ub)
                     else:
                         # Ensure nonlinear constraints only on the beginning of the FE
-                        nl_cons_k = self._nl_cons_fun(
-                            opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, 0],
-                            opt_p['_tvp', k], opt_p['_p', current_scenario], opt_x_unscaled['_eps', k, s])
+                        # updated for tvp_scenario_based
+                        if self.scenario_tvp:
+                            nl_cons_k = self._nl_cons_fun(
+                                opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, 0],
+                                opt_p['_tvp',current_scenario, k], opt_p['_p', current_scenario], opt_x_unscaled['_eps', k, s])
+                        #standard behavior
+                        else:
+                            nl_cons_k = self._nl_cons_fun(
+                                opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, 0],
+                                opt_p['_tvp', k], opt_p['_p', current_scenario], opt_x_unscaled['_eps', k, s])
                         cons.append(nl_cons_k)
                         cons_lb.append(self._nl_cons_lb)
                         cons_ub.append(self._nl_cons_ub)
@@ -1218,16 +1314,27 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                     # TODO: Add terminal constraints with an additional nl_cons
 
                     # Add contribution to the cost
-                    obj += omega[current_scenario] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
-                                                     opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', k], opt_p['_p', current_scenario])
+                    # updated for tvp_scenario_based
+                    if self.scenario_tvp:
+                        obj += omega[current_scenario] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
+                                                        opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', current_scenario, k], opt_p['_p', current_scenario])
+                    #standard behavior
+                    else:
+                        obj += omega[current_scenario] * self.lterm_fun(opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s],
+                                                        opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', k], opt_p['_p', current_scenario])
                     # Add slack variables to the cost
                     obj += self.epsterm_fun(opt_x_unscaled['_eps', k, s])
 
                     # In the last step add the terminal cost too
                     if k == self.n_horizon - 1:
-                        obj += omega[current_scenario] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', k+1],
-                                                         opt_p['_p', current_scenario])
-
+                        # updated for tvp_scenario_based
+                        if self.scenario_tvp:
+                            obj += omega[current_scenario] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', current_scenario, k+1],
+                                                            opt_p['_p', current_scenario])
+                        #standard behavior
+                        else:
+                            obj += omega[current_scenario] * self.mterm_fun(opt_x_unscaled['_x', k + 1, s, -1], opt_p['_tvp', k+1],
+                                                            opt_p['_p', current_scenario])
                     # U regularization:
                     if k == 0:
                         obj += self.rterm_factor.cat.T@((opt_x['_u', 0, s]-opt_p['_u_prev']/self._u_scaling)**2)
@@ -1235,8 +1342,14 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                         obj += self.rterm_factor.cat.T@((opt_x['_u', k, s]-opt_x['_u', k-1, parent_scenario[k][s]])**2)
 
                     # Calculate the auxiliary expressions for the current scenario:
-                    opt_aux['_aux', k, s] = self.model._aux_expression_fun(
-                        opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', k], opt_p['_p', current_scenario])
+                    # updated for tvp_scenario_based
+                    if self.scenario_tvp:
+                        opt_aux['_aux', k, s] = self.model._aux_expression_fun(
+                            opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, -1], opt_p['_tvp',current_scenario, k], opt_p['_p', current_scenario])
+                    #standard behavior
+                    else:
+                        opt_aux['_aux', k, s] = self.model._aux_expression_fun(
+                            opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', k], opt_p['_p', current_scenario])
 
 
         if self.cons_check_colloc_points:   # Constraints for all collocation points.

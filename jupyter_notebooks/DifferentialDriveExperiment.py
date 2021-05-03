@@ -7,7 +7,7 @@ class DifferentialDriveExperiment:
         #tracking_trajectories is an array of hashes like this {'L':..,'r':,'path':[[x0,y0,theta0],[x1,y1,theta1],...],'actions':[[u_l0,u_r0],[u_l0,u_r0],...]}
         self.preprocess_axle_info(axle_lengths_dict)
         self.preprocess_wheel_info(wheel_radii_dict)
-        
+    
         #if, for at the least one of the possible parameters of the model, user has defined the probabilities 
         #only one of the following situation are supported:
         #the other parameter is a costant in the model so param1_probabilities=[some array] and param2_probabilities=None but param2 is constant
@@ -37,14 +37,16 @@ class DifferentialDriveExperiment:
             else:
                 print ("ok both weights are not assigned so the library will assign the same prob to each scenario")      
 
-        self.tracking_trajectories = tracking_trajectories
-
-        self.regulation_mode = bool(self.tracking_trajectories == None)           
+        self.params_combinations = len(self.axle_lengths)*len(self.wheel_radii)
+        self.preprocess_trajectories(tracking_trajectories)
+            
 
         self.delta_t = 0.01 # Euler sampling interval and controller interval    
         
-        self.min_wheel_ang_vel = -2
-        self.max_wheel_ang_vel = 2
+        #self.min_wheel_ang_vel = -2
+        #self.max_wheel_ang_vel = 2
+        self.min_wheel_ang_vel = -3
+        self.max_wheel_ang_vel = 3
         
         self.n_horizon = 50 # prediction horizion
         self.n_robust = 1 # robust horizon (if scenario based experiment)
@@ -119,7 +121,16 @@ class DifferentialDriveExperiment:
             if('true_value' in wheel_radii_info.keys()):
                 self.true_wheel_radius = wheel_radii_info['true_value']
             else:
-                self.true_wheel_radius = self.wheel_radii[0]         
+                self.true_wheel_radius = self.wheel_radii[0]  
+
+    def preprocess_trajectories(self,tracking_trajectories):
+        self.tracking_trajectories = tracking_trajectories
+        if self.scenario_based_trajectory_tracking:
+            assert len(tracking_trajectories)==self.params_combinations, "In trajectory mode the allowed number of trajectories is 1 or the number of possible combinations of parameters"
+            #TO DO:
+            # verify that for each combination <L,r> exists a trajectory and that it is unique
+            # IMPORTANT:
+            # reorder tracking trajectories with the same order of mpc.set_uncertainty_parameters (controller.py line 802)  
 
     @property
     def model(self):
@@ -146,8 +157,17 @@ class DifferentialDriveExperiment:
         return self._simulator
     
     @property
+    def regulation_mode(self):
+        return bool(self.tracking_trajectories == None) 
+
+    @property
     def tracking_trajectory_mode(self):
         return not self.regulation_mode
+    
+    @property
+    def scenario_based_trajectory_tracking(self):
+        return self.tracking_trajectory_mode and (len(self.tracking_trajectories)>1)
+
  
     #True if axle length or wheel radius are parameters (also if a single value is provided for them)
     @property
@@ -245,6 +265,7 @@ class DifferentialDriveExperiment:
         self._model = model
 
     def _setup_differential_drive_model_mpc_controller(self):
+        
         mpc = do_mpc.controller.MPC(self.model)
         n_robust = 0
         if self.is_scenario_based:
@@ -256,11 +277,12 @@ class DifferentialDriveExperiment:
         'state_discretization': 'discrete',
         't_step': self.delta_t,  # timestep of the mpc
         'store_full_solution': True, # choose whether to store the full solution of the optimization problem
+        'scenario_tvp': self.scenario_based_trajectory_tracking
         # Use MA27 linear solver in ipopt for faster calculations:
         #'nlpsol_opts': {'ipopt.linear_solver': 'mumps'}
         }
+        
         mpc.set_param(**setup_mpc)
-
         if self.regulation_mode:
             mterm = self.model.aux['squared_distance_to_target'] # "naive" terminal cost
             #lterm = self.model.aux['zero']
@@ -282,37 +304,64 @@ class DifferentialDriveExperiment:
         mpc.bounds['upper','_u','u_r'] = self.max_wheel_ang_vel
 
         if self.tracking_trajectory_mode:
-            tvp_template_mpc = mpc.get_tvp_template()
-            
-            def tvp_fun_mpc(t_now):
-                for k in range(self.n_horizon+1):
-                    curr_trj = self.tracking_trajectories[0]
-                    #print("CURR TRAJ PATH {}".format(curr_trj['path']))
-                    
-                    base_index = int(t_now / self.delta_t)
-                    #print("t_now val {} type {} base_index value {}".format(t_now,type(t_now),base_index))
-                    if (base_index + k) < len(curr_trj['path']):
-                        path_index = base_index + k
-                    else:
-                        path_index = -1
-                    tvp_template_mpc['_tvp',k,'x_ref'] = curr_trj['path'][path_index][0]
-                    tvp_template_mpc['_tvp',k,'y_ref'] = curr_trj['path'][path_index][1]
-                    tvp_template_mpc['_tvp',k,'theta_ref'] = curr_trj['path'][path_index][2]
-                    if (base_index + k) < len(curr_trj['actions']):
-                        act_index = base_index + k
-                    else:
-                        act_index = -1 
-                    tvp_template_mpc['_tvp',k,'u_l_ref'] = curr_trj['actions'][act_index][0]
-                    tvp_template_mpc['_tvp',k,'u_r_ref'] = curr_trj['actions'][act_index][1]
-                    #tvp_template['_tvp',k,'x_ref'] =10
-                    #tvp_template['_tvp',k,'y_ref'] = 20
-                    #tvp_template['_tvp',k,'theta_ref'] = 20
-                    #tvp_template['_tvp',k,'u_l_ref'] = 20
-                    #tvp_template['_tvp',k,'u_r_ref'] = 2
-                return tvp_template_mpc
+            if self.scenario_based_trajectory_tracking:
+                tvp_template_mpc = mpc.get_tvp_template(n_combinations=self.params_combinations)
 
-            mpc.set_tvp_fun(tvp_fun_mpc)
-        
+                def tvp_fun_mpc(t_now):
+                    for c in range(self.params_combinations):
+                        #curr_trj = self.tracking_trajectories[c]
+                        curr_trj = self.tracking_trajectories[0]
+                        #print("CURR TRAJ PATH {}".format(curr_trj['path']))
+                        for k in range(self.n_horizon+1):    
+                            base_index = int(t_now / self.delta_t)
+                            #print("t_now val {} type {} base_index value {}".format(t_now,type(t_now),base_index))
+                            if (base_index + k) < len(curr_trj['path']):
+                                path_index = base_index + k
+                            else:
+                                path_index = -1
+                            tvp_template_mpc['_tvp',c,k,'x_ref'] = curr_trj['path'][path_index][0]
+                            tvp_template_mpc['_tvp',c,k,'y_ref'] = curr_trj['path'][path_index][1]
+                            tvp_template_mpc['_tvp',c,k,'theta_ref'] = curr_trj['path'][path_index][2]
+                            if (base_index + k) < len(curr_trj['actions']):
+                                act_index = base_index + k
+                            else:
+                                act_index = -1 
+                            tvp_template_mpc['_tvp',c,k,'u_l_ref'] = curr_trj['actions'][act_index][0]
+                            tvp_template_mpc['_tvp',c,k,'u_r_ref'] = curr_trj['actions'][act_index][1]
+                    return tvp_template_mpc
+                mpc.set_tvp_fun(tvp_fun_mpc,n_combinations=self.params_combinations)
+
+            else:
+                tvp_template_mpc = mpc.get_tvp_template()
+            
+                def tvp_fun_mpc(t_now):
+                    for k in range(self.n_horizon+1):
+                        curr_trj = self.tracking_trajectories[0]
+                        #print("CURR TRAJ PATH {}".format(curr_trj['path']))
+                    
+                        base_index = int(t_now / self.delta_t)
+                        #print("t_now val {} type {} base_index value {}".format(t_now,type(t_now),base_index))
+                        if (base_index + k) < len(curr_trj['path']):
+                            path_index = base_index + k
+                        else:
+                            path_index = -1
+                        tvp_template_mpc['_tvp',k,'x_ref'] = curr_trj['path'][path_index][0]
+                        tvp_template_mpc['_tvp',k,'y_ref'] = curr_trj['path'][path_index][1]
+                        tvp_template_mpc['_tvp',k,'theta_ref'] = curr_trj['path'][path_index][2]
+                        if (base_index + k) < len(curr_trj['actions']):
+                            act_index = base_index + k
+                        else:
+                            act_index = -1 
+                        tvp_template_mpc['_tvp',k,'u_l_ref'] = curr_trj['actions'][act_index][0]
+                        tvp_template_mpc['_tvp',k,'u_r_ref'] = curr_trj['actions'][act_index][1]
+                        #tvp_template['_tvp',k,'x_ref'] =10
+                        #tvp_template['_tvp',k,'y_ref'] = 20
+                        #tvp_template['_tvp',k,'theta_ref'] = 20
+                        #tvp_template['_tvp',k,'u_l_ref'] = 20
+                        #tvp_template['_tvp',k,'u_r_ref'] = 2
+                    return tvp_template_mpc
+                mpc.set_tvp_fun(tvp_fun_mpc)
+            
         if self.is_axle_length_param:
             if self.is_wheel_radius_param:
                 mpc.set_uncertainty_values(L=self.axle_lengths, r=self.wheel_radii)

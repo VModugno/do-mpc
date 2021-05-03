@@ -4,7 +4,7 @@ from DifferentialDriveExperiment import DifferentialDriveExperiment
 import baseline_integration as bi
 
 #https://docs.pytest.org/en/stable/getting-started.html
-#pytest -q test_differential_drive_experiment.py
+#pytest -q [-rP] [-rx] test_differential_drive_experiment.py
 
 class TestDifferentialDriveExperiment:
     
@@ -388,5 +388,29 @@ class TestDifferentialDriveExperiment:
         assert not experiment.regulation_mode
         assert experiment.tracking_trajectory_mode
 
-    
-    
+    def test_nineteen_trajectory_tracking_single_trajectory(self):
+
+        ppo2_model_name = "ppo2_meters_redesigned_1"
+        init_robot_pose = {'x': 0.12, 'y': -0.25, 'theta': -np.pi/2}
+        obss, actions = bi.load_and_run_model(ppo2_model_name,1000,list(init_robot_pose.values()))
+        experiment = DifferentialDriveExperiment(
+                axle_lengths_dict={'values':[0.5]}, 
+                wheel_radii_dict={'values':[0.15,0.14]},
+                tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss,'actions':actions},
+                                    {'L':0.5,'r':0.14,'path':obss,'actions':actions}
+                                ])
+        
+        experiment.setup_experiment(init_robot_pose)
+
+        assert experiment.is_a_parametrized_model
+        assert not experiment.is_axle_length_param
+        assert experiment.is_wheel_radius_param
+        assert experiment.is_scenario_based
+        assert not experiment.is_custom_weighted_scenario_based
+        assert experiment.axle_probabilities == None  
+        assert experiment.wheel_probabilities == None
+        assert experiment.true_axle_length == 0.5
+        assert experiment.true_wheel_radius == 0.15
+
+        assert not experiment.regulation_mode
+        assert experiment.tracking_trajectory_mode
