@@ -1,5 +1,6 @@
 import numpy as np
 from casadi import *
+import itertools
 import do_mpc
 
 class DifferentialDriveExperiment:
@@ -65,6 +66,7 @@ class DifferentialDriveExperiment:
         assert 'values' in axle_length_info.keys(),'values is a mandatory key in axle_length_info'
         assert isinstance(axle_length_info['values'], list),'axle length values have to be provided as a list'
         assert len(axle_length_info['values'])>0 ,'at the least one value for the axle parameter has to be provided'
+        assert len(set(axle_length_info['values'])) == len(axle_length_info['values']), 'Axle length values must be distinct'
         #in theory I had also to check that the length values are numbers
         self.axle_lengths = axle_length_info['values']
 
@@ -98,6 +100,7 @@ class DifferentialDriveExperiment:
         assert 'values' in wheel_radii_info.keys(),'values is a mandatory key in the wheel radii dict'
         assert isinstance(wheel_radii_info['values'], list),'wheel radii values have to be provided as a list'
         assert len(wheel_radii_info['values'])>0 ,'at the least one value for the wheel radii parameter has to be provided'
+        assert len(set(wheel_radii_info['values'])) == len(wheel_radii_info['values']), 'Axle length values must be distinct'
         #in theory I should also to check that the radii values provided are all numeric
         self.wheel_radii = wheel_radii_info['values']
 
@@ -123,14 +126,22 @@ class DifferentialDriveExperiment:
             else:
                 self.true_wheel_radius = self.wheel_radii[0]  
 
-    def preprocess_trajectories(self,tracking_trajectories):
-        self.tracking_trajectories = tracking_trajectories
+    def preprocess_trajectories(self,tracking_trajectories):   
+        self.tracking_trajectories = tracking_trajectories 
         if self.scenario_based_trajectory_tracking:
             assert len(tracking_trajectories)==self.params_combinations, "In trajectory mode the allowed number of trajectories is 1 or the number of possible combinations of parameters"
-            #TO DO:
-            # verify that for each combination <L,r> exists a trajectory and that it is unique
+            # verify that for each combination <L,r> exists a trajectory 
+            # (if yes the previous assert guarantee that each trajectory corresponds to a scenario of the problem)
             # IMPORTANT:
-            # reorder tracking trajectories with the same order of mpc.set_uncertainty_parameters (controller.py line 802)  
+            # reorder tracking trajectories with the same order of mpc.set_uncertainty_parameters (controller.py line 802)
+            scenarios = list(itertools.product(self.axle_lengths,self.wheel_radii))
+            print("Scenarios {}".format(scenarios))
+            ordered_trajectories = []
+            for s in scenarios:
+                traj = list(filter(lambda t:t['L']==s[0] and t['r']==s[1],tracking_trajectories))
+                assert len(traj) == 1, "Scenario L={} and r={} must have one single reference trajectory".format(s[0],s[1])
+                ordered_trajectories.append(traj[0])
+            self.tracking_trajectories = ordered_trajectories
 
     @property
     def model(self):
