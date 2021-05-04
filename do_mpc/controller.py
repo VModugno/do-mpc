@@ -1021,7 +1021,9 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         self.opt_p_num['_x0'] = x0
         self.opt_p_num['_u_prev'] = u_prev
         self.opt_p_num['_tvp'] = tvp0['_tvp']
+        print("Make step tvp0['_tvp'] type {}".format(self.opt_p_num['_tvp']))
         self.opt_p_num['_p'] = p0['_p']
+        print("Make step p0['_p'] type {}".format(self.opt_p_num['_p']))
         # Solve the optimization problem (method inherited from optimizer)
         self.solve()
 
@@ -1034,7 +1036,13 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         self.data.update(_x = x0)
         self.data.update(_u = u0)
         self.data.update(_z = z0)
-        self.data.update(_tvp = tvp0['_tvp', 0])
+        if self.scenario_tvp:
+            #cc = tvp0['_tvp', :, 0]
+            #print(cc)
+            #import code; code.interact(local=locals())
+            self.data.update(_tvp = np.array(tvp0['_tvp', 0, 0]))
+        else:
+            self.data.update(_tvp = tvp0['_tvp', 0])
         self.data.update(_time = t0)
         self.data.update(_aux = aux0)
 

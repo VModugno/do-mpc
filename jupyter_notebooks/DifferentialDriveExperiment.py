@@ -310,7 +310,7 @@ class DifferentialDriveExperiment:
                 def tvp_fun_mpc(t_now):
                     for c in range(self.params_combinations):
                         #curr_trj = self.tracking_trajectories[c]
-                        curr_trj = self.tracking_trajectories[0]
+                        curr_trj = self.tracking_trajectories[c]
                         #print("CURR TRAJ PATH {}".format(curr_trj['path']))
                         for k in range(self.n_horizon+1):    
                             base_index = int(t_now / self.delta_t)
