@@ -414,3 +414,42 @@ class TestDifferentialDriveExperiment:
 
         assert not experiment.regulation_mode
         assert experiment.tracking_trajectory_mode
+
+    def test_twenty_trajectory_tracking_single_trajectory(self):
+
+        #ppo2_model_name = "ppo2_meters_redesigned_1"
+        init_robot_pose = {'x': 2, 'y': 0, 'theta': 0}
+        #obss, actions = bi.load_and_run_model(ppo2_model_name,1000,list(init_robot_pose.values()))
+        abs_max_ul_ur = 3
+        max_robot_vel_l1 = bi.from_commands_to_robot_velocity(3,3,0.50,0.15)[0]
+        max_robot_vel_l2 = bi.from_commands_to_robot_velocity(3,3,0.49,0.15)[0]
+        robot_commands_l1 = bi.from_robot_velocity_to_commands(max_robot_vel_l1,0.0,0.50,0.15)
+        robot_commands_l2 = bi.from_robot_velocity_to_commands(max_robot_vel_l2,0.0,0.49,0.15)
+        print("Max lin vel if ax 0.50 {} check required robot_commands {}".format(max_robot_vel_l1,robot_commands_l1))
+        print("Max lin vel if ax 0.49 {} check required robot_commands {}".format(max_robot_vel_l2,robot_commands_l2))
+        trajectories = bi.compute_trajectories_x_eq_y_x_eq_min_y(500,0.50,0.49,0.15,init_pos=[0,0],abs_max_ul=abs_max_ul_ur,abs_max_ur=abs_max_ul_ur,delta_t=0.01)
+        obss1 = trajs[0]['path']
+        actions1 = trajs[0]['actions']
+        obss2 = trajs[1]['path']
+        actions2 = trajs[1]['actions']
+        experiment = DifferentialDriveExperiment(
+                axle_lengths_dict={'values':[0.5,0.48]}, 
+                wheel_radii_dict={'values':[0.15]},
+                tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1},
+                                    {'L':0.49,'r':0.15,'path':obss2,'actions':actions2}
+                                ])
+        
+        experiment.setup_experiment(init_robot_pose)
+
+        assert experiment.is_a_parametrized_model
+        assert not experiment.is_axle_length_param
+        assert experiment.is_wheel_radius_param
+        assert experiment.is_scenario_based
+        assert not experiment.is_custom_weighted_scenario_based
+        assert experiment.axle_probabilities == None  
+        assert experiment.wheel_probabilities == None
+        assert experiment.true_axle_length == 0.5
+        assert experiment.true_wheel_radius == 0.15
+
+        assert not experiment.regulation_mode
+        assert experiment.tracking_trajectory_mode

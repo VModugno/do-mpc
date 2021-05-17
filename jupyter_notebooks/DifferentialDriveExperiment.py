@@ -49,7 +49,8 @@ class DifferentialDriveExperiment:
         self.min_wheel_ang_vel = -3
         self.max_wheel_ang_vel = 3
         
-        self.n_horizon = 50 # prediction horizion
+        #self.n_horizon = 50 # prediction horizion
+        self.n_horizon = 300
         self.n_robust = 1 # robust horizon (if scenario based experiment)
         
         self._model = None
@@ -301,7 +302,8 @@ class DifferentialDriveExperiment:
             lterm = self.model.aux['position_norm']
         else:
             mterm = self.model.aux['squared_trajectory_error'] # "naive" terminal cost for trajectory tracking
-            lterm = self.model.aux['trajectory_error'] 
+            #lterm = self.model.aux['trajectory_error'] 
+            lterm = self.model.aux['squared_trajectory_error']
             
 
         mpc.set_objective(mterm=mterm,lterm=lterm) # "naive" cost function

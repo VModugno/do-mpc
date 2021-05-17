@@ -166,10 +166,43 @@ def load_and_run_model(model_name,n_steps,init_pose=None):
         #env.render(mode = 'console')
     return obs_list, action_list
     
-def robot_linear_velocity(u_l,u_r,L=axle_length, r=wheel_radius):
-    v = (u_l + u_r)* w_radius/2
-    w = (u_r - u_l)* w_radius/a_length
+def from_commands_to_robot_velocity(u_l,u_r,L=axle_length, r=wheel_radius):
+    v = (u_l + u_r)* r/2
+    w = (u_r - u_l)* r/L
     return v, w
+
+def from_robot_velocity_to_commands(v,w,L=axle_length,r=wheel_radius):
+    #From the previous equations: summing we have the expression of 2 u_r
+    #Subtracting we have the espression of u_l
+    u_r = (2*v+L*w)/(2*r)
+    u_l = (2*v-L*w)/(2*r) 
+    return u_l,u_r
+
+def compute_trajectories_x_eq_y_x_eq_min_y(n_samples,ax_len1,ax_len2,wheel_r,init_pos=[0,0],abs_max_ul=3,abs_max_ur=3,delta_t=0.01):
+    max_robot_lin_vel_len1 = from_commands_to_robot_velocity(3,3,L=ax_len1,r=wheel_r)[0]
+    max_robot_lin_vel_len2 = from_commands_to_robot_velocity(3,3,L=ax_len2,r=wheel_r)[0]
+    max_robot_lin_vel = np.min([max_robot_lin_vel_len1,max_robot_lin_vel_len2])
+    max_ds = delta_t * max_robot_lin_vel
+    path_x_eq_y = [[init_pos[0],init_pos[1],np.pi/4]]
+    controls_x_eq_y = []
+    path_x_eq_min_y =[[init_pos[0],init_pos[1],3*np.pi/4]]
+    controls_x_eq_min_y = []
+    curr_pos = init_pos
+    for i in range(n_samples):
+      #curr_ds = np.random.uniform(low=0.0,high=max_ds)
+      curr_ds = max_ds/2
+      curr_lin_vel = curr_ds/delta_t
+      curr_commands_l1 = from_robot_velocity_to_commands(curr_lin_vel,0.0,L=ax_len1,r=wheel_r)
+      curr_dx = curr_ds/np.sqrt(2)
+      curr_pos = [curr_pos[0]+curr_dx, curr_pos[1]+curr_dx]
+      path_x_eq_y.append([curr_pos[0],curr_pos[1],np.pi/4])
+      controls_x_eq_y.append(curr_commands_l1)
+      path_x_eq_min_y.append([-curr_pos[0],curr_pos[1],3*np.pi/4])
+      curr_commands_l2 = from_robot_velocity_to_commands(curr_lin_vel,0.0,L=ax_len2,r=wheel_r)
+      controls_x_eq_min_y.append(curr_commands_l2)
+    return [{'path':path_x_eq_y,'actions':controls_x_eq_y},{'path':path_x_eq_min_y,'actions':controls_x_eq_min_y}]
+      
+
 
 def show_rl_trajectory(obs_list,act_list):
     x_values = list(map(lambda obs: obs[0], obs_list))
@@ -184,7 +217,7 @@ def show_rl_trajectory(obs_list,act_list):
     w_values = []
 
     for a in act_list:
-        v,w = robot_linear_velocity(a[0],a[1])
+        v,w = from_commands_to_robot_velocity(a[0],a[1])
         v_values.append(v)
         w_values.append(w)
 
@@ -224,11 +257,6 @@ def show_rl_trajectory(obs_list,act_list):
     ax[3].grid()
 
     plt.show()
-
-def robot_linear_velocity(u_l,u_r,L=axle_length, r=wheel_radius):
-    v = (u_l + u_r)* r/2
-    w = (u_r - u_l)* r/L
-    return v, w
 
 def main():
     check_diff_drive_env()
