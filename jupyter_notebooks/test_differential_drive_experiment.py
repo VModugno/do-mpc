@@ -2,6 +2,8 @@ import numpy as np
 import do_mpc
 from DifferentialDriveExperiment import DifferentialDriveExperiment 
 import baseline_integration as bi
+from casadi import *
+from casadi.tools import *
 
 #https://docs.pytest.org/en/stable/getting-started.html
 #pytest -q [-rP] [-rx] test_differential_drive_experiment.py
@@ -428,22 +430,21 @@ class TestDifferentialDriveExperiment:
         print("Max lin vel if ax 0.50 {} check required robot_commands {}".format(max_robot_vel_l1,robot_commands_l1))
         print("Max lin vel if ax 0.49 {} check required robot_commands {}".format(max_robot_vel_l2,robot_commands_l2))
         trajectories = bi.compute_trajectories_x_eq_y_x_eq_min_y(500,0.50,0.49,0.15,init_pos=[0,0],abs_max_ul=abs_max_ul_ur,abs_max_ur=abs_max_ul_ur,delta_t=0.01)
-        obss1 = trajs[0]['path']
-        actions1 = trajs[0]['actions']
-        obss2 = trajs[1]['path']
-        actions2 = trajs[1]['actions']
+        obss1 = trajectories[0]['path']
+        actions1 = trajectories[0]['actions']
+        obss2 = trajectories[1]['path']
+        actions2 = trajectories[1]['actions']
         experiment = DifferentialDriveExperiment(
-                axle_lengths_dict={'values':[0.5,0.48]}, 
+                axle_lengths_dict={'values':[0.5,0.49]}, 
                 wheel_radii_dict={'values':[0.15]},
                 tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1},
                                     {'L':0.49,'r':0.15,'path':obss2,'actions':actions2}
-                                ])
-        
+                                ]) 
         experiment.setup_experiment(init_robot_pose)
 
         assert experiment.is_a_parametrized_model
-        assert not experiment.is_axle_length_param
-        assert experiment.is_wheel_radius_param
+        assert experiment.is_axle_length_param
+        assert not experiment.is_wheel_radius_param
         assert experiment.is_scenario_based
         assert not experiment.is_custom_weighted_scenario_based
         assert experiment.axle_probabilities == None  
@@ -453,3 +454,70 @@ class TestDifferentialDriveExperiment:
 
         assert not experiment.regulation_mode
         assert experiment.tracking_trajectory_mode
+    
+    def test_twenty_one_cost_function_comparison(self):
+        init_robot_coords = {'x': 2, 'y': 2}
+        abs_max_ul_ur = 3
+        trajectories = bi.compute_trajectories_x_eq_y_x_eq_min_y(500,0.50,0.49,0.15,
+                                                    init_pos=list(init_robot_coords.values()),
+                                                    abs_max_ul=abs_max_ul_ur,abs_max_ur=abs_max_ul_ur,
+                                                    delta_t=0.01)
+        obss1 = trajectories[0]['path']
+        actions1 = trajectories[0]['actions']
+        obss2 = trajectories[1]['path']
+        actions2 = trajectories[1]['actions']
+        init_robot_pose = {'x': 0, 'y': 2,'theta': np.pi/2}
+        horizon_steps = 2
+        experiment1 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.5]}, 
+                                                wheel_radii_dict={'values':[0.15]},
+                                                tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1}],
+                                                n_horizon=horizon_steps)
+        
+        experiment1.setup_experiment(init_robot_pose)
+        assert not experiment1.is_a_parametrized_model
+        assert not experiment1.is_axle_length_param
+        assert not experiment1.is_wheel_radius_param
+
+        cost_function1 = experiment1.mpc.obj_expression
+        print("*************************Experiment 1: single scenario L=0.50 ***************************")
+        cost1 = bi.compute_cost_of_tracking_along_the_horizon(cost_function1,experiment1.mpc,init_robot_pose,trajectories[0:1],[[3,3],[3,3]])        
+        
+        experiment2 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.49]}, 
+                                                wheel_radii_dict={'values':[0.15]},
+                                                tracking_trajectories=[{'L':0.49,'r':0.15,'path':obss2,'actions':actions2}],
+                                                n_horizon=horizon_steps)
+    
+        experiment2.setup_experiment(init_robot_pose)
+        assert not experiment2.is_a_parametrized_model
+        assert not experiment2.is_axle_length_param
+        assert not experiment2.is_wheel_radius_param
+        cost_function2 = experiment2.mpc.obj_expression
+        
+        print("*************************Experiment 2: single scenario L=0.49 ***************************")
+        cost2 = bi.compute_cost_of_tracking_along_the_horizon(cost_function2,experiment2.mpc,init_robot_pose,trajectories[1:2],[[3,3],[3,3]])
+        
+        experiment3 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.5,0.49]}, 
+                                                wheel_radii_dict={'values':[0.15]},
+                                                tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1},
+                                                                    {'L':0.49,'r':0.15,'path':obss2,'actions':actions2}],
+                                                n_horizon=horizon_steps)
+        
+        experiment3.setup_experiment(init_robot_pose)
+        cost_function3 = experiment3.mpc.obj_expression
+        print("*************************Experiment 3: combining the two scenarios ***************************")
+        #print("Size of X {}, shape of X {}".format(experiment3.mpc.opt_x.size, experiment3.mpc.opt_x.cat.shape))
+        #print("Num of rows of x and length of horizon + 1 {} ".format(len(experiment3.mpc.opt_x['_x'])))
+        #print("Num of columns of x and num of scenarios {}".format(len(experiment3.mpc.opt_x['_x'][0])))
+        #print("Size of OPT_P {}, shape of OPT_P {}".format(experiment3.mpc.opt_p.size, experiment3.mpc.opt_p.cat.shape))
+        #print("Num of rows of TVP and num of scenarios {} ".format(len(experiment3.mpc.opt_p['_tvp'])))
+        #print("Num of columns of TVP and length of horizon + 1 {}".format(len(experiment3.mpc.opt_p['_tvp'][0])))
+        cost3 = bi.compute_cost_of_tracking_along_the_horizon(cost_function3,experiment3.mpc,init_robot_pose,trajectories,[[3,3],[3,3]])
+        tolerance = 0.01
+        average_cost1_2 = 0.5 *cost1 + 0.5 *cost2
+        assert abs(float( cost3 - average_cost1_2)) < tolerance
+        print("Cost in the two scenario mpc {} Average of the cost of the two single scenario mpc {}".format(cost3, average_cost1_2))
+        
+        
+
+        
+

@@ -4,7 +4,7 @@ import itertools
 import do_mpc
 
 class DifferentialDriveExperiment:
-    def __init__(self,axle_lengths_dict,wheel_radii_dict, tracking_trajectories=None):
+    def __init__(self,axle_lengths_dict,wheel_radii_dict, tracking_trajectories=None,n_horizon=50):
         #tracking_trajectories is an array of hashes like this {'L':..,'r':,'path':[[x0,y0,theta0],[x1,y1,theta1],...],'actions':[[u_l0,u_r0],[u_l0,u_r0],...]}
         self.preprocess_axle_info(axle_lengths_dict)
         self.preprocess_wheel_info(wheel_radii_dict)
@@ -50,7 +50,7 @@ class DifferentialDriveExperiment:
         self.max_wheel_ang_vel = 3
         
         #self.n_horizon = 50 # prediction horizion
-        self.n_horizon = 300
+        self.n_horizon = n_horizon
         self.n_robust = 1 # robust horizon (if scenario based experiment)
         
         self._model = None

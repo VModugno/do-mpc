@@ -1170,6 +1170,8 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         """
         # Obtain an integrator (collocation, discrete-time) and the amount of intermediate (collocation) points
         ifcn, n_total_coll_points = self._setup_discretization()
+        #ADDED for test by fra
+        self.n_total_coll_points = n_total_coll_points
         n_branches, n_scenarios, child_scenario, parent_scenario, branch_offset = self._setup_scenario_tree()
         n_max_scenarios = self.n_combinations ** self.n_robust
         # Create struct for optimization variables:
@@ -1359,6 +1361,8 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
                         opt_aux['_aux', k, s] = self.model._aux_expression_fun(
                             opt_x_unscaled['_x', k, s, -1], opt_x_unscaled['_u', k, s], opt_x_unscaled['_z', k, s, -1], opt_p['_tvp', k], opt_p['_p', current_scenario])
 
+        #Here save obj:should be the expression of the objective function
+        self.obj_expression = obj
 
         if self.cons_check_colloc_points:   # Constraints for all collocation points.
             # Dont bound the initial state

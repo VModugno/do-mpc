@@ -6,6 +6,8 @@ from gym import Env
 from gym.spaces import Box
 from gym.utils import seeding
 import matplotlib.pyplot as plt
+from casadi import *
+from casadi.tools import *
 
 import math
 
@@ -202,7 +204,54 @@ def compute_trajectories_x_eq_y_x_eq_min_y(n_samples,ax_len1,ax_len2,wheel_r,ini
       controls_x_eq_min_y.append(curr_commands_l2)
     return [{'path':path_x_eq_y,'actions':controls_x_eq_y},{'path':path_x_eq_min_y,'actions':controls_x_eq_min_y}]
       
-
+def compute_cost_of_tracking_along_the_horizon(cost_expression,mpc,init_robot_pose,ref_trajectories,command_values):
+  
+    n_coll_pts = mpc.n_total_coll_points
+    assert n_coll_pts == 0, "This test is only for discrete opt problems: num of collocation poits is {} must be 0".format(n_coll_pts)
+    #_x is a SX_sym of dim horizon_steps * num_scenarios * num_of_collocation_points
+    horizon_steps = len(mpc.opt_x['_x'])-1
+    num_scenarios = len(mpc.opt_x['_x'][0])
+    assert len(ref_trajectories) == num_scenarios, "The reference trajectiories number {} is different from the scenarios number {}".format(len(ref_trajectories),num_scenarios)
+    assert len(command_values)>= horizon_steps
+    assert mpc.n_robust <= 1, "This test currently assumes that n_robust is equal to 1 (this inpacts on the x symbols retrieving)"
+    print("Obj expression {} ".format(cost_expression))
+    print("Num of coll points {} ".format(n_coll_pts))
+    cost_value = cost_expression
+    for s in range(num_scenarios):
+      print("XXXXXXXXXXX SCENARIO XXXXXXXXXXXXXXXXXXXXX: {}".format(s))
+      ref_obss = ref_trajectories[s]['path']
+      ref_actions = ref_trajectories[s]['actions']
+      ref_path_along_horizon = ref_obss[0:horizon_steps+1]
+      # PATH of the state along the horizon: replace this section with the computation of the state with command_values
+      epsilon_path = 0.0005
+      state_along_horizon = list(map(lambda st: [0,(st[1]-epsilon_path),init_robot_pose['theta']],ref_path_along_horizon))
+      state_along_horizon[0] = list(init_robot_pose.values())
+      #####
+      print("Path to track along the horizon: {}".format(ref_path_along_horizon))
+      print("State along the horizon {}".format(state_along_horizon))
+      print("Opt TVP {}".format(mpc.opt_p["_tvp"]))
+      print("Opt X of _x variables (state): {}".format(mpc.opt_x['_x']))
+      print("Opt X of _x variables along horizon, scenario {}, coll {}: {}".format(s,n_coll_pts, mpc.opt_x['_x',:,s,0]))
+      x_x_horizon = mpc.opt_x['_x',:,s,n_coll_pts,'x']
+      x_y_horizon = mpc.opt_x['_x',:,s,n_coll_pts,'y']
+      print("Opt X of _x.x along horizon, scenario {}, coll {}: {}".format(s,n_coll_pts,x_x_horizon))
+      print("Opt X of _x.y along horizon, scenario {}, coll {}: {}".format(s,n_coll_pts,x_y_horizon))
+      if mpc.scenario_tvp :
+        tvp_horizon_x_ref = mpc.opt_p['_tvp',s,:,'x_ref']
+        tvp_horizon_y_ref = mpc.opt_p['_tvp',s,:,'y_ref']
+      else:
+        tvp_horizon_x_ref = mpc.opt_p['_tvp',:,'x_ref']
+        tvp_horizon_y_ref = mpc.opt_p['_tvp',:,'y_ref']
+      print("Opt TVP of x_ref along the horizon: {}".format(tvp_horizon_x_ref))
+      print("Opt TVP of y_ref along the horizon: {}".format(tvp_horizon_y_ref))
+      
+      for i in range(0,horizon_steps+1):
+          cost_value = substitute(cost_value,tvp_horizon_x_ref[i],ref_path_along_horizon[i][0])
+          cost_value = substitute(cost_value,tvp_horizon_y_ref[i],ref_path_along_horizon[i][1])
+          cost_value = substitute(cost_value,x_x_horizon[i],state_along_horizon[i][0])
+          cost_value = substitute(cost_value,x_y_horizon[i],state_along_horizon[i][1])
+    print("Cost function value: {}".format(cost_value))
+    return cost_value
 
 def show_rl_trajectory(obs_list,act_list):
     x_values = list(map(lambda obs: obs[0], obs_list))
