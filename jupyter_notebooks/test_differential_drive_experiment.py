@@ -472,7 +472,6 @@ class TestDifferentialDriveExperiment:
         tracking_trajectories_exp1=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1}]
         experiment1 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.5]}, 
                                                 wheel_radii_dict={'values':[0.15]},
-                                                #tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1}],
                                                 tracking_trajectories=tracking_trajectories_exp1,
                                                 n_horizon=horizon_steps)
         
@@ -485,9 +484,9 @@ class TestDifferentialDriveExperiment:
         print("\n*************************Experiment 1: single scenario L=0.50 ***************************")
         #cost1 = bi.compute_cost_of_tracking_along_the_horizon(cost_function1,experiment1.mpc,init_robot_pose,trajectories[0:1],test_commands) 
         cost1 = bi.compute_cost_of_tracking_along_the_horizon(cost_function1,experiment1.mpc,init_robot_pose,tracking_trajectories_exp1,test_commands)       
-        tracking_trajectories_exp2=[{'L':0.49,'r':0.15,'path':obss2,'actions':actions2}]
-        experiment2 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.49]}, 
-                                                wheel_radii_dict={'values':[0.15]},
+        tracking_trajectories_exp2=[{'L':0.5,'r':0.13,'path':obss2,'actions':actions2}]
+        experiment2 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.5]}, 
+                                                wheel_radii_dict={'values':[0.13]},
                                                 tracking_trajectories=tracking_trajectories_exp2,
                                                 n_horizon=horizon_steps)
     
@@ -501,9 +500,9 @@ class TestDifferentialDriveExperiment:
         cost2 = bi.compute_cost_of_tracking_along_the_horizon(cost_function2,experiment2.mpc,init_robot_pose,tracking_trajectories_exp2,test_commands)
         
         tracking_trajectories_exp3=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1},
-                                    {'L':0.49,'r':0.15,'path':obss2,'actions':actions2}]
-        experiment3 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.5,0.49]}, 
-                                                wheel_radii_dict={'values':[0.15]},
+                                    {'L':0.5,'r':0.13,'path':obss2,'actions':actions2}]
+        experiment3 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.5]}, 
+                                                wheel_radii_dict={'values':[0.15,0.13]},
                                                 tracking_trajectories=tracking_trajectories_exp3,
                                                 n_horizon=horizon_steps)
         
