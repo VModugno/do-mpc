@@ -203,6 +203,20 @@ def compute_trajectories_x_eq_y_x_eq_min_y(n_samples,ax_len1,ax_len2,wheel_r,ini
       curr_commands_l2 = from_robot_velocity_to_commands(curr_lin_vel,0.0,L=ax_len2,r=wheel_r)
       controls_x_eq_min_y.append(curr_commands_l2)
     return [{'path':path_x_eq_y,'actions':controls_x_eq_y},{'path':path_x_eq_min_y,'actions':controls_x_eq_min_y}]
+
+def diffdrive_evolution_from_commands(axle_l, wheel_r,init_pose,commands,delta_t=0.01):
+  x = init_pose['x']
+  y = init_pose['y']
+  theta = init_pose['theta']
+  state_seq = [[x,y,theta]]
+  for c in commands:
+    v,w = from_commands_to_robot_velocity(c[0],c[1],axle_l,wheel_r)
+    x = x + v * delta_t * cos(theta)
+    y = y + v * delta_t * sin(theta)
+    theta = theta + w * delta_t
+    state_seq.append([x,y,theta])
+    #print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!! c is {} state is {}".format(c,[x,y,theta]))
+  return state_seq
       
 def compute_cost_of_tracking_along_the_horizon(cost_expression,mpc,init_robot_pose,ref_trajectories,command_values):
   
@@ -218,15 +232,18 @@ def compute_cost_of_tracking_along_the_horizon(cost_expression,mpc,init_robot_po
     print("Num of coll points {} ".format(n_coll_pts))
     cost_value = cost_expression
     for s in range(num_scenarios):
-      print("XXXXXXXXXXX SCENARIO XXXXXXXXXXXXXXXXXXXXX: {}".format(s))
+      print("\nXXXXXXXXXXX SCENARIO: {} [axle length = {} wheel radius = {}] XXXXXXXXXXXXXXXXXXXXX".format(s,ref_trajectories[s]['L'],ref_trajectories[s]['r']))
       ref_obss = ref_trajectories[s]['path']
       ref_actions = ref_trajectories[s]['actions']
+      s_L = ref_trajectories[s]['L']
+      s_r = ref_trajectories[s]['r']
       ref_path_along_horizon = ref_obss[0:horizon_steps+1]
       # PATH of the state along the horizon: replace this section with the computation of the state with command_values
-      epsilon_path = 0.0005
-      state_along_horizon = list(map(lambda st: [0,(st[1]-epsilon_path),init_robot_pose['theta']],ref_path_along_horizon))
-      state_along_horizon[0] = list(init_robot_pose.values())
+      #epsilon_path = 0.0005
+      #state_along_horizon = list(map(lambda st: [0,(st[1]-epsilon_path),init_robot_pose['theta']],ref_path_along_horizon))
+      #state_along_horizon[0] = list(init_robot_pose.values())
       #####
+      state_along_horizon = diffdrive_evolution_from_commands(s_L,s_r,init_robot_pose,command_values)
       print("Path to track along the horizon: {}".format(ref_path_along_horizon))
       print("State along the horizon {}".format(state_along_horizon))
       print("Opt TVP {}".format(mpc.opt_p["_tvp"]))
@@ -250,6 +267,7 @@ def compute_cost_of_tracking_along_the_horizon(cost_expression,mpc,init_robot_po
           cost_value = substitute(cost_value,tvp_horizon_y_ref[i],ref_path_along_horizon[i][1])
           cost_value = substitute(cost_value,x_x_horizon[i],state_along_horizon[i][0])
           cost_value = substitute(cost_value,x_y_horizon[i],state_along_horizon[i][1])
+      print("Cost function at s {} is {}".format(s,cost_value))    
     print("Cost function value: {}".format(cost_value))
     return cost_value
 

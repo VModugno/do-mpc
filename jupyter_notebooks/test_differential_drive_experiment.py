@@ -467,10 +467,13 @@ class TestDifferentialDriveExperiment:
         obss2 = trajectories[1]['path']
         actions2 = trajectories[1]['actions']
         init_robot_pose = {'x': 0, 'y': 2,'theta': np.pi/2}
-        horizon_steps = 2
+        horizon_steps = 5
+        test_commands = [[1.5,1.5],[2,2],[2.5,2.5],[1,1],[1.5,0.7]]
+        tracking_trajectories_exp1=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1}]
         experiment1 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.5]}, 
                                                 wheel_radii_dict={'values':[0.15]},
-                                                tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1}],
+                                                #tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1}],
+                                                tracking_trajectories=tracking_trajectories_exp1,
                                                 n_horizon=horizon_steps)
         
         experiment1.setup_experiment(init_robot_pose)
@@ -479,12 +482,13 @@ class TestDifferentialDriveExperiment:
         assert not experiment1.is_wheel_radius_param
 
         cost_function1 = experiment1.mpc.obj_expression
-        print("*************************Experiment 1: single scenario L=0.50 ***************************")
-        cost1 = bi.compute_cost_of_tracking_along_the_horizon(cost_function1,experiment1.mpc,init_robot_pose,trajectories[0:1],[[3,3],[3,3]])        
-        
+        print("\n*************************Experiment 1: single scenario L=0.50 ***************************")
+        #cost1 = bi.compute_cost_of_tracking_along_the_horizon(cost_function1,experiment1.mpc,init_robot_pose,trajectories[0:1],test_commands) 
+        cost1 = bi.compute_cost_of_tracking_along_the_horizon(cost_function1,experiment1.mpc,init_robot_pose,tracking_trajectories_exp1,test_commands)       
+        tracking_trajectories_exp2=[{'L':0.49,'r':0.15,'path':obss2,'actions':actions2}]
         experiment2 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.49]}, 
                                                 wheel_radii_dict={'values':[0.15]},
-                                                tracking_trajectories=[{'L':0.49,'r':0.15,'path':obss2,'actions':actions2}],
+                                                tracking_trajectories=tracking_trajectories_exp2,
                                                 n_horizon=horizon_steps)
     
         experiment2.setup_experiment(init_robot_pose)
@@ -493,25 +497,26 @@ class TestDifferentialDriveExperiment:
         assert not experiment2.is_wheel_radius_param
         cost_function2 = experiment2.mpc.obj_expression
         
-        print("*************************Experiment 2: single scenario L=0.49 ***************************")
-        cost2 = bi.compute_cost_of_tracking_along_the_horizon(cost_function2,experiment2.mpc,init_robot_pose,trajectories[1:2],[[3,3],[3,3]])
+        print("\n*************************Experiment 2: single scenario L=0.49 ***************************")
+        cost2 = bi.compute_cost_of_tracking_along_the_horizon(cost_function2,experiment2.mpc,init_robot_pose,tracking_trajectories_exp2,test_commands)
         
+        tracking_trajectories_exp3=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1},
+                                    {'L':0.49,'r':0.15,'path':obss2,'actions':actions2}]
         experiment3 = DifferentialDriveExperiment(axle_lengths_dict={'values':[0.5,0.49]}, 
                                                 wheel_radii_dict={'values':[0.15]},
-                                                tracking_trajectories=[{'L':0.5,'r':0.15,'path':obss1,'actions':actions1},
-                                                                    {'L':0.49,'r':0.15,'path':obss2,'actions':actions2}],
+                                                tracking_trajectories=tracking_trajectories_exp3,
                                                 n_horizon=horizon_steps)
         
         experiment3.setup_experiment(init_robot_pose)
         cost_function3 = experiment3.mpc.obj_expression
-        print("*************************Experiment 3: combining the two scenarios ***************************")
+        print("\n*************************Experiment 3: combining the two scenarios ***************************")
         #print("Size of X {}, shape of X {}".format(experiment3.mpc.opt_x.size, experiment3.mpc.opt_x.cat.shape))
         #print("Num of rows of x and length of horizon + 1 {} ".format(len(experiment3.mpc.opt_x['_x'])))
         #print("Num of columns of x and num of scenarios {}".format(len(experiment3.mpc.opt_x['_x'][0])))
         #print("Size of OPT_P {}, shape of OPT_P {}".format(experiment3.mpc.opt_p.size, experiment3.mpc.opt_p.cat.shape))
         #print("Num of rows of TVP and num of scenarios {} ".format(len(experiment3.mpc.opt_p['_tvp'])))
         #print("Num of columns of TVP and length of horizon + 1 {}".format(len(experiment3.mpc.opt_p['_tvp'][0])))
-        cost3 = bi.compute_cost_of_tracking_along_the_horizon(cost_function3,experiment3.mpc,init_robot_pose,trajectories,[[3,3],[3,3]])
+        cost3 = bi.compute_cost_of_tracking_along_the_horizon(cost_function3,experiment3.mpc,init_robot_pose,tracking_trajectories_exp3,test_commands)
         tolerance = 0.01
         average_cost1_2 = 0.5 *cost1 + 0.5 *cost2
         assert abs(float( cost3 - average_cost1_2)) < tolerance
