@@ -145,28 +145,52 @@ def check_diff_drive_env():
     check_env(env, warn=True)
     print("Env checked!")
 
+def load_model(model_name):
+  return PPO2.load(model_name)
+
+def run_model(model,n_steps,a_length,w_radius,init_pos=None):
+  env = DifferentialDriveEnv(L=a_length, r=w_radius,init_position=init_pos)
+  #print("INITPOSE_after env created {}".format(env.init_position))
+  obs = env.reset()
+  #print("INITPOSE_after env reset {}".format(env.init_position))
+  #print("OBS after resest {}".format(obs))
+  obs_list = [obs]
+  action_list = []
+  for _ in range(n_steps):
+      action, _states = model.predict(obs,deterministic=True)
+      obs, rewards, done, info = env.step(action)
+      action_list.append(action)
+      obs_list.append(obs)
+      if done:
+          print("Arrived in {} steps".format(len(obs_list)))
+          break  
+      #print("Current x: {} current y: {}".format(obs[0],obs[1]))
+      #env.render(mode = 'console')
+  return obs_list, action_list
+
 def load_and_run_model(model_name,n_steps,init_pose=None):
-    env = None
-    model = None
-    model = PPO2.load(model_name)
-    env = DifferentialDriveEnv(L=axle_length, r=wheel_radius,init_position=init_pose)
-    print("INITPOSE_after env created {}".format(env.init_position))
-    obs = env.reset()
-    print("INITPOSE_after env reset {}".format(env.init_position))
-    print("OBS after resest {}".format(obs))
-    obs_list = [obs]
-    action_list = []
-    for _ in range(n_steps):
-        action, _states = model.predict(obs,deterministic=True)
-        obs, rewards, done, info = env.step(action)
-        action_list.append(action)
-        obs_list.append(obs)
-        if done:
-            print("Arrived in {} steps".format(len(obs_list)))
-            break  
+    #model = PPO2.load(model_name)
+    ppo2_model = load_model(model_name)
+    obs_list,action_list = run_model(ppo2_model,n_steps,axle_length,wheel_radius,init_pos=init_pose)
+    #env = DifferentialDriveEnv(L=axle_length, r=wheel_radius,init_position=init_pose)
+    #print("INITPOSE_after env created {}".format(env.init_position))
+    #obs = env.reset()
+    #print("INITPOSE_after env reset {}".format(env.init_position))
+    #print("OBS after resest {}".format(obs))
+    #obs_list = [obs]
+    #action_list = []
+    #for _ in range(n_steps):
+    #    action, _states = model.predict(obs,deterministic=True)
+    #    obs, rewards, done, info = env.step(action)
+    #    action_list.append(action)
+    #    obs_list.append(obs)
+    #    if done:
+    #        print("Arrived in {} steps".format(len(obs_list)))
+    #        break  
         #print("Current x: {} current y: {}".format(obs[0],obs[1]))
         #env.render(mode = 'console')
     return obs_list, action_list
+  
     
 def from_commands_to_robot_velocity(u_l,u_r,L=axle_length, r=wheel_radius):
     v = (u_l + u_r)* r/2
@@ -251,22 +275,27 @@ def compute_cost_of_tracking_along_the_horizon(cost_expression,mpc,init_robot_po
       print("Opt X of _x variables along horizon, scenario {}, coll {}: {}".format(s,n_coll_pts, mpc.opt_x['_x',:,s,0]))
       x_x_horizon = mpc.opt_x['_x',:,s,n_coll_pts,'x']
       x_y_horizon = mpc.opt_x['_x',:,s,n_coll_pts,'y']
+      x_theta_horizon = mpc.opt_x['_x',:,s,n_coll_pts,'theta']
       print("Opt X of _x.x along horizon, scenario {}, coll {}: {}".format(s,n_coll_pts,x_x_horizon))
       print("Opt X of _x.y along horizon, scenario {}, coll {}: {}".format(s,n_coll_pts,x_y_horizon))
       if mpc.scenario_tvp :
         tvp_horizon_x_ref = mpc.opt_p['_tvp',s,:,'x_ref']
         tvp_horizon_y_ref = mpc.opt_p['_tvp',s,:,'y_ref']
+        tvp_horizon_theta_ref = mpc.opt_p['_tvp',s,:,'theta_ref']
       else:
         tvp_horizon_x_ref = mpc.opt_p['_tvp',:,'x_ref']
         tvp_horizon_y_ref = mpc.opt_p['_tvp',:,'y_ref']
+        tvp_horizon_theta_ref = mpc.opt_p['_tvp',:,'theta_ref']
       print("Opt TVP of x_ref along the horizon: {}".format(tvp_horizon_x_ref))
       print("Opt TVP of y_ref along the horizon: {}".format(tvp_horizon_y_ref))
       
       for i in range(0,horizon_steps+1):
           cost_value = substitute(cost_value,tvp_horizon_x_ref[i],ref_path_along_horizon[i][0])
           cost_value = substitute(cost_value,tvp_horizon_y_ref[i],ref_path_along_horizon[i][1])
+          cost_value = substitute(cost_value,tvp_horizon_theta_ref[i],ref_path_along_horizon[i][2])
           cost_value = substitute(cost_value,x_x_horizon[i],state_along_horizon[i][0])
           cost_value = substitute(cost_value,x_y_horizon[i],state_along_horizon[i][1])
+          cost_value = substitute(cost_value,x_theta_horizon[i],state_along_horizon[i][2])
       print("Cost function at s {} is {}".format(s,cost_value))    
     print("Cost function value: {}".format(cost_value))
     return cost_value

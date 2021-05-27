@@ -28,6 +28,7 @@ from casadi.tools import *
 import pdb
 import itertools
 import time
+import inspect
 
 import do_mpc.data
 import do_mpc.optimizer
@@ -1013,7 +1014,21 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
 
         # Get current tvp, p and time (as well as previous u)
         u_prev = self._u0
-        tvp0 = self.tvp_fun(self._t0)
+        #if self.scenario_tvp:
+        #    tvp0 = self.tvp_fun(self._t0,x0)
+        #else:
+        #    tvp0 = self.tvp_fun(self._t0)
+        tvp_fun_parameters = len(inspect.signature(self.tvp_fun).parameters)
+        print("MPC TVP FUN has {} parameters".format(tvp_fun_parameters))
+        print("x0 is {} and its type is {}".format(x0,type(x0)))
+        if tvp_fun_parameters == 1:
+            tvp0 = self.tvp_fun(self._t0)
+        else:
+            curr_state = x0
+            if isinstance(curr_state, np.ndarray):
+                curr_state = curr_state.flatten()
+            curr_state = [curr_state[0],curr_state[1],curr_state[2]]
+            tvp0 = self.tvp_fun(self._t0,curr_state)
         p0 = self.p_fun(self._t0)
         t0 = self._t0
 

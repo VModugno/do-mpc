@@ -515,11 +515,43 @@ class TestDifferentialDriveExperiment:
         #print("Size of OPT_P {}, shape of OPT_P {}".format(experiment3.mpc.opt_p.size, experiment3.mpc.opt_p.cat.shape))
         #print("Num of rows of TVP and num of scenarios {} ".format(len(experiment3.mpc.opt_p['_tvp'])))
         #print("Num of columns of TVP and length of horizon + 1 {}".format(len(experiment3.mpc.opt_p['_tvp'][0])))
+        #tvp_template3 = experiment3.mpc.get_tvp_template(experiment3.params_combinations)
+        #print("?????????????????????????????????????????????????????????????????????????????????????")
+        #print("Num of rows of tvp_template and num of scenarios {}".format(len(tvp_template3['_tvp'])))
+        #print("Num of colums of tvp_template and  horizon length +1 {}".format(len(tvp_template3['_tvp'][0])))
+
         cost3 = bi.compute_cost_of_tracking_along_the_horizon(cost_function3,experiment3.mpc,init_robot_pose,tracking_trajectories_exp3,test_commands)
         tolerance = 0.01
         average_cost1_2 = 0.5 *cost1 + 0.5 *cost2
         assert abs(float( cost3 - average_cost1_2)) < tolerance
         print("Cost in the two scenario mpc {} Average of the cost of the two single scenario mpc {}".format(cost3, average_cost1_2))
+
+    def test_twenty_two_tracking_online_trajectories(self):
+        ppo2_model_name = "ppo2_meters_redesigned_1"
+        init_robot_pose = {'x': 0.12, 'y': -0.25, 'theta': -np.pi/2}
+        #obss, actions = bi.load_and_run_model(ppo2_model_name,1000,list(init_robot_pose.values()))
+        experiment = DifferentialDriveExperiment(
+                axle_lengths_dict={'values':[0.5]}, 
+                wheel_radii_dict={'values':[0.15,0.14]},
+                tracking_trajectories=[{'L':0.5,'r':0.15,'policy_name':ppo2_model_name}])
+        
+        experiment.setup_experiment(init_robot_pose)
+
+        assert experiment.is_a_parametrized_model
+        assert not experiment.is_axle_length_param
+        assert experiment.is_wheel_radius_param
+        assert experiment.is_scenario_based
+        assert not experiment.is_custom_weighted_scenario_based
+        assert experiment.axle_probabilities == None  
+        assert experiment.wheel_probabilities == None
+        assert experiment.true_axle_length == 0.5
+        assert experiment.true_wheel_radius == 0.15
+
+        assert not experiment.regulation_mode
+        assert experiment.tracking_trajectory_mode
+        assert experiment.online_trajectory_mode
+        assert not experiment.scenario_based_trajectory_tracking
+
         
         
 

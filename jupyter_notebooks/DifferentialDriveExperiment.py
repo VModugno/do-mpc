@@ -2,10 +2,13 @@ import numpy as np
 from casadi import *
 import itertools
 import do_mpc
+import baseline_integration as bi
 
 class DifferentialDriveExperiment:
     def __init__(self,axle_lengths_dict,wheel_radii_dict, tracking_trajectories=None,n_horizon=50):
-        #tracking_trajectories is an array of hashes like this {'L':..,'r':,'path':[[x0,y0,theta0],[x1,y1,theta1],...],'actions':[[u_l0,u_r0],[u_l0,u_r0],...]}
+        #tracking_trajectories is an array of hashes 
+        #   like this  {'L':..,'r':,'path':[[x0,y0,theta0],[x1,y1,theta1],...],'actions':[[u_l0,u_r0],[u_l0,u_r0],...]}
+        #   or like this  {'L':..,'r':,'policy_name': model_name}
         self.preprocess_axle_info(axle_lengths_dict)
         self.preprocess_wheel_info(wheel_radii_dict)
     
@@ -129,12 +132,27 @@ class DifferentialDriveExperiment:
 
     def preprocess_trajectories(self,tracking_trajectories):   
         self.tracking_trajectories = tracking_trajectories 
+        #check the structure of the trajectories dict
+        if self.tracking_trajectory_mode:
+            for t in self.tracking_trajectories:
+                t_keys = list(t.keys())
+                assert 'L' in t.keys() and 'r' in t.keys(), 'In tracking trajectory mode the L and r keys are mandatory in the trajectory dict'
+                if self.online_trajectory_mode:
+                    assert len(t_keys) == 3
+                    assert 'policy_name' in t.keys(), 'In online tracking trajectory mode policy_name is a mandatory entry in the trajectory dict'
+                    t['policy'] = bi.load_model(t['policy_name'])
+                else:
+                    assert len(t_keys) == 4
+                    assert 'path' in t.keys() and 'actions' in t.keys(),'In offline trajectory mode path and actions keys are mandatory in the trajectory dict'
         if self.scenario_based_trajectory_tracking:
             assert len(tracking_trajectories)==self.params_combinations, "In trajectory mode the allowed number of trajectories is 1 or the number of possible combinations of parameters"
+            # verify the structure of the tracking_trajectories dict:
             # verify that for each combination <L,r> exists a trajectory 
             # (if yes the previous assert guarantee that each trajectory corresponds to a scenario of the problem)
             # IMPORTANT:
             # reorder tracking trajectories with the same order of mpc.set_uncertainty_parameters (controller.py line 802)
+            # Important verify that for each scenario there is or the policy or actions and path key
+
             scenarios = list(itertools.product(self.axle_lengths,self.wheel_radii))
             print("Scenarios {}".format(scenarios))
             ordered_trajectories = []
@@ -170,11 +188,15 @@ class DifferentialDriveExperiment:
     
     @property
     def regulation_mode(self):
-        return bool(self.tracking_trajectories == None) 
+        return bool(self.tracking_trajectories == None or len(self.tracking_trajectories) ==0) 
 
     @property
     def tracking_trajectory_mode(self):
         return not self.regulation_mode
+    
+    @property
+    def online_trajectory_mode(self):
+        return self.tracking_trajectory_mode and  ('policy_name' in self.tracking_trajectories[0].keys())
     
     @property
     def scenario_based_trajectory_tracking(self):
@@ -271,10 +293,91 @@ class DifferentialDriveExperiment:
             model.set_expression('squared_trajectory_error', (x-x_ref)**2+(y-y_ref)**2)
             model.set_expression('trajectory_error',sqrt((x-x_ref)**2+(y-y_ref)**2))
             model.set_expression('orientation_trajectory_difference',atan2(sin(theta-theta_ref),cos(theta-theta_ref)))
+            model.set_expression('squared_orientation_trajectory_difference',(atan2(sin(theta-theta_ref),cos(theta-theta_ref)))**2)
             model.set_expression('squared_action_trajectory_error',(u_l-u_l_ref)**2+(u_r-u_r_ref)**2)
         model.setup()
 
         self._model = model
+    
+    @staticmethod
+    def _fill_mpc_scenario_tvp_template_with_offline_trajectories(t_now,delta_t,s_tvp_template,track_trajectories):
+        p_combinations = len(s_tvp_template['_tvp'])
+        horizon_plus_1 = len(s_tvp_template['_tvp'][0])
+        for c in range(p_combinations):
+            curr_trj = track_trajectories[c]
+            #print("CURR TRAJ PATH {}".format(curr_trj['path']))
+            for k in range(horizon_plus_1):    
+                base_index = int(t_now / delta_t)
+                #print("t_now val {} type {} base_index value {}".format(t_now,type(t_now),base_index))
+                if (base_index + k) < len(curr_trj['path']):
+                    path_index = base_index + k
+                else:
+                    path_index = -1
+                s_tvp_template['_tvp',c,k,'x_ref'] = curr_trj['path'][path_index][0]
+                s_tvp_template['_tvp',c,k,'y_ref'] = curr_trj['path'][path_index][1]
+                s_tvp_template['_tvp',c,k,'theta_ref'] = curr_trj['path'][path_index][2]
+                if (base_index + k) < len(curr_trj['actions']):
+                        act_index = base_index + k
+                else:
+                        act_index = -1 
+                s_tvp_template['_tvp',c,k,'u_l_ref'] = curr_trj['actions'][act_index][0]
+                s_tvp_template['_tvp',c,k,'u_r_ref'] = curr_trj['actions'][act_index][1]
+        return s_tvp_template
+    
+    @staticmethod
+    def _fill_mpc_scenario_tvp_template_with_online_trajectories(curr_state,s_tvp_template,track_trajectories):
+        p_combinations = len(s_tvp_template['_tvp'])
+        horizon_plus_1 = len(s_tvp_template['_tvp'][0])
+        for c in range(p_combinations):
+            curr_trj = track_trajectories[c]
+            path, actions = bi.run_model(curr_trj['policy'],horizon_plus_1,curr_trj['L'],curr_trj['r'],curr_state)
+            for k in range(horizon_plus_1):
+                path_index = k if k<len(path) else -1
+                s_tvp_template['_tvp',c,k,'x_ref'] = path[path_index][0]
+                s_tvp_template['_tvp',c,k,'y_ref'] = path[path_index][1]
+                s_tvp_template['_tvp',c,k,'theta_ref'] = path[path_index][2]
+                act_index = k if k<len(actions) else -1
+                s_tvp_template['_tvp',c,k,'u_l_ref'] = actions[act_index][0]
+                s_tvp_template['_tvp',c,k,'u_r_ref'] = actions[act_index][1]
+        return s_tvp_template
+    
+    @staticmethod
+    def _fill_mpc_tvp_template_with_offline_trajectory(t_now,delta_t,s_tvp_template,trajectory):
+        horizon_plus_1 = len(s_tvp_template['_tvp'])
+        for k in range(horizon_plus_1):
+            #print("TRAJ PATH has {} point".format(len(trajectory['path'])))
+            base_index = int(t_now / delta_t)
+            #print("t_now val {} type {} base_index value {}".format(t_now,type(t_now),base_index))
+            if (base_index + k) < len(trajectory['path']):
+                path_index = base_index + k
+            else:
+                path_index = -1
+            s_tvp_template['_tvp',k,'x_ref'] = trajectory['path'][path_index][0]
+            s_tvp_template['_tvp',k,'y_ref'] = trajectory['path'][path_index][1]
+            s_tvp_template['_tvp',k,'theta_ref'] = trajectory['path'][path_index][2]
+            if (base_index + k) < len(trajectory['actions']):
+                act_index = base_index + k
+            else:
+                act_index = -1 
+            s_tvp_template['_tvp',k,'u_l_ref'] = trajectory['actions'][act_index][0]
+            s_tvp_template['_tvp',k,'u_r_ref'] = trajectory['actions'][act_index][1]
+        #print("AFTER ASSIGN s_tvp_template {}".format(s_tvp_template['_tvp']))
+        return s_tvp_template
+    
+    @staticmethod
+    def _fill_mpc_tvp_template_with_online_trajectory(curr_state,s_tvp_template,trajectory):
+        #print("QUIIIIIIIIIIIIIIIIIII MPC from curr_state {}".format(curr_state))
+        horizon_plus_1 = len(s_tvp_template['_tvp'])
+        path, actions = bi.run_model(trajectory['policy'],horizon_plus_1,trajectory['L'],trajectory['r'],curr_state)
+        for k in range(horizon_plus_1):
+            path_index = k if k<len(path) else -1
+            s_tvp_template['_tvp',k,'x_ref'] = path[path_index][0]
+            s_tvp_template['_tvp',k,'y_ref'] = path[path_index][1]
+            s_tvp_template['_tvp',k,'theta_ref'] = path [path_index][2]
+            act_index = k if k<len(actions) else -1
+            s_tvp_template['_tvp',k,'u_l_ref'] = actions[act_index][0]
+            s_tvp_template['_tvp',k,'u_r_ref'] = actions[act_index][1]
+        return s_tvp_template
 
     def _setup_differential_drive_model_mpc_controller(self):
         
@@ -301,9 +404,9 @@ class DifferentialDriveExperiment:
             #lterm = self.model.aux['squared_distance_to_target']
             lterm = self.model.aux['position_norm']
         else:
-            mterm = self.model.aux['squared_trajectory_error'] # "naive" terminal cost for trajectory tracking
+            mterm = self.model.aux['squared_trajectory_error'] +self.model.aux['squared_orientation_trajectory_difference']# "naive" terminal cost for trajectory tracking
             #lterm = self.model.aux['trajectory_error'] 
-            lterm = self.model.aux['squared_trajectory_error']
+            lterm = self.model.aux['squared_trajectory_error'] + self.model.aux['squared_orientation_trajectory_difference']
             
 
         mpc.set_objective(mterm=mterm,lterm=lterm) # "naive" cost function
@@ -319,60 +422,24 @@ class DifferentialDriveExperiment:
         if self.tracking_trajectory_mode:
             if self.scenario_based_trajectory_tracking:
                 tvp_template_mpc = mpc.get_tvp_template(n_combinations=self.params_combinations)
+                if self.online_trajectory_mode:
+                    def tvp_fun_mpc(t_now,current_x=[0,0,0]):
+                        return self._fill_mpc_scenario_tvp_template_with_online_trajectories(current_x,tvp_template_mpc,self.tracking_trajectories)
+                else:
+                    def tvp_fun_mpc(t_now):
+                        return self. _fill_mpc_scenario_tvp_template_with_offline_trajectories(t_now,self.delta_t,tvp_template_mpc,self.tracking_trajectories)
 
-                def tvp_fun_mpc(t_now):
-                    for c in range(self.params_combinations):
-                        #curr_trj = self.tracking_trajectories[c]
-                        curr_trj = self.tracking_trajectories[c]
-                        #print("CURR TRAJ PATH {}".format(curr_trj['path']))
-                        for k in range(self.n_horizon+1):    
-                            base_index = int(t_now / self.delta_t)
-                            #print("t_now val {} type {} base_index value {}".format(t_now,type(t_now),base_index))
-                            if (base_index + k) < len(curr_trj['path']):
-                                path_index = base_index + k
-                            else:
-                                path_index = -1
-                            tvp_template_mpc['_tvp',c,k,'x_ref'] = curr_trj['path'][path_index][0]
-                            tvp_template_mpc['_tvp',c,k,'y_ref'] = curr_trj['path'][path_index][1]
-                            tvp_template_mpc['_tvp',c,k,'theta_ref'] = curr_trj['path'][path_index][2]
-                            if (base_index + k) < len(curr_trj['actions']):
-                                act_index = base_index + k
-                            else:
-                                act_index = -1 
-                            tvp_template_mpc['_tvp',c,k,'u_l_ref'] = curr_trj['actions'][act_index][0]
-                            tvp_template_mpc['_tvp',c,k,'u_r_ref'] = curr_trj['actions'][act_index][1]
-                    return tvp_template_mpc
                 mpc.set_tvp_fun(tvp_fun_mpc,n_combinations=self.params_combinations)
 
             else:
                 tvp_template_mpc = mpc.get_tvp_template()
-            
-                def tvp_fun_mpc(t_now):
-                    for k in range(self.n_horizon+1):
-                        curr_trj = self.tracking_trajectories[0]
-                        #print("CURR TRAJ PATH {}".format(curr_trj['path']))
-                    
-                        base_index = int(t_now / self.delta_t)
-                        #print("t_now val {} type {} base_index value {}".format(t_now,type(t_now),base_index))
-                        if (base_index + k) < len(curr_trj['path']):
-                            path_index = base_index + k
-                        else:
-                            path_index = -1
-                        tvp_template_mpc['_tvp',k,'x_ref'] = curr_trj['path'][path_index][0]
-                        tvp_template_mpc['_tvp',k,'y_ref'] = curr_trj['path'][path_index][1]
-                        tvp_template_mpc['_tvp',k,'theta_ref'] = curr_trj['path'][path_index][2]
-                        if (base_index + k) < len(curr_trj['actions']):
-                            act_index = base_index + k
-                        else:
-                            act_index = -1 
-                        tvp_template_mpc['_tvp',k,'u_l_ref'] = curr_trj['actions'][act_index][0]
-                        tvp_template_mpc['_tvp',k,'u_r_ref'] = curr_trj['actions'][act_index][1]
-                        #tvp_template['_tvp',k,'x_ref'] =10
-                        #tvp_template['_tvp',k,'y_ref'] = 20
-                        #tvp_template['_tvp',k,'theta_ref'] = 20
-                        #tvp_template['_tvp',k,'u_l_ref'] = 20
-                        #tvp_template['_tvp',k,'u_r_ref'] = 2
-                    return tvp_template_mpc
+                if self.online_trajectory_mode:
+                    def tvp_fun_mpc(t_now, current_x=[0,0,0]):
+                        return self._fill_mpc_tvp_template_with_online_trajectory(current_x,tvp_template_mpc,self.tracking_trajectories[0])
+                else:
+                    def tvp_fun_mpc(t_now):
+                        return self._fill_mpc_tvp_template_with_offline_trajectory(t_now,self.delta_t,tvp_template_mpc,self.tracking_trajectories[0])
+                
                 mpc.set_tvp_fun(tvp_fun_mpc)
             
         if self.is_axle_length_param:
@@ -396,6 +463,35 @@ class DifferentialDriveExperiment:
         # We assume that all states can be directly measured
         self._estimator = do_mpc.estimator.StateFeedback(self.model)
 
+    @staticmethod
+    def _fill_simulator_tvp_template_with_offline_trajectory(t_now,delta_t,sim_tvp_template,trajectory):
+        base_index = int(t_now /delta_t)
+        if (base_index) < len(trajectory['path']):
+            path_index = base_index
+        else:
+            path_index = -1
+        sim_tvp_template['x_ref'] = trajectory['path'][path_index][0]
+        sim_tvp_template['y_ref'] = trajectory['path'][path_index][1]
+        sim_tvp_template['theta_ref'] = trajectory['path'][path_index][2]
+        if (base_index) < len(trajectory['actions']):
+            act_index = base_index
+        else:
+            act_index = -1
+        sim_tvp_template['u_l_ref'] = trajectory['actions'][act_index][0]
+        sim_tvp_template['u_r_ref'] = trajectory['actions'][act_index][1]
+
+        return sim_tvp_template
+    
+    @staticmethod
+    def _fill_simulator_tvp_template_with_online_trajectory(curr_state,sim_tvp_template,trajectory):
+        path, actions = bi.run_model(trajectory['policy'],1,trajectory['L'],trajectory['r'],curr_state)
+        sim_tvp_template['x_ref'] = path[0][0]
+        sim_tvp_template['y_ref'] = path[0][1]
+        sim_tvp_template['theta_ref'] = path [0][2]
+        sim_tvp_template['u_l_ref'] = actions[0][0]
+        sim_tvp_template['u_r_ref'] = actions[0][1]
+        return sim_tvp_template
+
     def _setup_differential_drive_simulator(self):
         # Create simulator in order to run MPC in a closed-loop
         simulator = do_mpc.simulator.Simulator(self.model)
@@ -413,27 +509,14 @@ class DifferentialDriveExperiment:
         if self.tracking_trajectory_mode:
             # Get the template
             tvp_template = simulator.get_tvp_template()
-            # Define the function (indexing is much simpler ...)
-            def tvp_fun(t_now):
-                curr_trj = self.tracking_trajectories[0]
-                #print("CURR TRAJ {}".format(curr_trj))
-                base_index = int(t_now / self.delta_t)
-                if (base_index) < len(curr_trj['path']):
-                    path_index = base_index
-                else:
-                    path_index = -1
-                tvp_template['x_ref'] = curr_trj['path'][path_index][0]
-                tvp_template['y_ref'] = curr_trj['path'][path_index][1]
-                tvp_template['theta_ref'] = curr_trj['path'][path_index][2]
-                if (base_index) < len(curr_trj['actions']):
-                    act_index = base_index
-                else:
-                    act_index = -1
-                tvp_template['u_l_ref'] = curr_trj['actions'][act_index][0]
-                tvp_template['u_r_ref'] = curr_trj['actions'][act_index][1]
-                return tvp_template
+            if self.online_trajectory_mode:
+                def sim_tvp_fun(t_now,current_x=[0,0,0]):
+                    return self._fill_simulator_tvp_template_with_online_trajectory(current_x,tvp_template,self.tracking_trajectories[0])
+            else:
+                def sim_tvp_fun(t_now):
+                    return self._fill_simulator_tvp_template_with_offline_trajectory(t_now,self.delta_t,tvp_template,self.tracking_trajectories[0])
             # Set the tvp_fun:
-            simulator.set_tvp_fun(tvp_fun)
+            simulator.set_tvp_fun(sim_tvp_fun)
 
         simulator.setup()
         self._simulator = simulator
