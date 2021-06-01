@@ -168,10 +168,10 @@ def run_model(model,n_steps,a_length,w_radius,init_pos=None):
       #env.render(mode = 'console')
   return obs_list, action_list
 
-def load_and_run_model(model_name,n_steps,init_pose=None):
+def load_and_run_model(model_name,n_steps,a_length=axle_length,w_radius=wheel_radius,init_pose=None):
     #model = PPO2.load(model_name)
     ppo2_model = load_model(model_name)
-    obs_list,action_list = run_model(ppo2_model,n_steps,axle_length,wheel_radius,init_pos=init_pose)
+    obs_list,action_list = run_model(ppo2_model,n_steps,a_length,w_radius,init_pos=init_pose)
     #env = DifferentialDriveEnv(L=axle_length, r=wheel_radius,init_position=init_pose)
     #print("INITPOSE_after env created {}".format(env.init_position))
     #obs = env.reset()

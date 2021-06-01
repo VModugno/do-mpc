@@ -1019,7 +1019,7 @@ class MPC(do_mpc.optimizer.Optimizer, do_mpc.model.IteratedVariables):
         #else:
         #    tvp0 = self.tvp_fun(self._t0)
         tvp_fun_parameters = len(inspect.signature(self.tvp_fun).parameters)
-        print("MPC TVP FUN has {} parameters".format(tvp_fun_parameters))
+        print("MPC tvp_fun function has {} parameters in the signature".format(tvp_fun_parameters))
         print("x0 is {} and its type is {}".format(x0,type(x0)))
         if tvp_fun_parameters == 1:
             tvp0 = self.tvp_fun(self._t0)
