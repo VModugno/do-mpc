@@ -369,7 +369,7 @@ class TestDifferentialDriveExperiment:
 
         ppo2_model_name = "ppo2_meters_redesigned_1"
         init_robot_pose = {'x': 0.12, 'y': -0.25, 'theta': -np.pi/2}
-        obss, actions = bi.load_and_run_model(ppo2_model_name,1000,list(init_robot_pose.values()))
+        obss, actions = bi.load_and_run_model(ppo2_model_name,1000,0.50,0.15,list(init_robot_pose.values()))
         experiment = DifferentialDriveExperiment(
                 axle_lengths_dict={'values':[0.5]}, 
                 wheel_radii_dict={'values':[0.15]},
@@ -394,7 +394,7 @@ class TestDifferentialDriveExperiment:
 
         ppo2_model_name = "ppo2_meters_redesigned_1"
         init_robot_pose = {'x': 0.12, 'y': -0.25, 'theta': -np.pi/2}
-        obss, actions = bi.load_and_run_model(ppo2_model_name,1000,list(init_robot_pose.values()))
+        obss, actions = bi.load_and_run_model(ppo2_model_name,1000,0.50,0.15,list(init_robot_pose.values()))
         experiment = DifferentialDriveExperiment(
                 axle_lengths_dict={'values':[0.5]}, 
                 wheel_radii_dict={'values':[0.15,0.14]},
@@ -421,7 +421,7 @@ class TestDifferentialDriveExperiment:
 
         #ppo2_model_name = "ppo2_meters_redesigned_1"
         init_robot_pose = {'x': 2, 'y': 0, 'theta': 0}
-        #obss, actions = bi.load_and_run_model(ppo2_model_name,1000,list(init_robot_pose.values()))
+        #obss, actions = bi.load_and_run_model(ppo2_model_name,10000.50,0.15,list(init_robot_pose.values()))
         abs_max_ul_ur = 3
         max_robot_vel_l1 = bi.from_commands_to_robot_velocity(3,3,0.50,0.15)[0]
         max_robot_vel_l2 = bi.from_commands_to_robot_velocity(3,3,0.49,0.15)[0]

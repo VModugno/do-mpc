@@ -3,6 +3,7 @@ from casadi import *
 import itertools
 import do_mpc
 import baseline_integration as bi
+from differential_drive_env_v1 import DifferentialDriveEnvV1
 
 class DifferentialDriveExperiment:
     def __init__(self,axle_lengths_dict,wheel_radii_dict, tracking_trajectories=None,n_horizon=50):
@@ -138,9 +139,16 @@ class DifferentialDriveExperiment:
                 t_keys = list(t.keys())
                 assert 'L' in t.keys() and 'r' in t.keys(), 'In tracking trajectory mode the L and r keys are mandatory in the trajectory dict'
                 if self.online_trajectory_mode:
-                    assert len(t_keys) == 3
+                    assert len(t_keys) == 3 or len(t_keys) == 4
                     assert 'policy_name' in t.keys(), 'In online tracking trajectory mode policy_name is a mandatory entry in the trajectory dict'
-                    t['policy'] = bi.load_model(t['policy_name'])
+                    if len(t_keys) == 4:
+                        assert 'env_class_name' in t.keys(), 'To specify the env of the policy for the tracking use the env_class_name key in the trajectory dict'
+                        env_class_name = t['env_class_name']
+                    else:
+                        env_class_name = DifferentialDriveEnvV1
+                    policy_env_dict = bi.setup_model_execution_on_env(t['policy_name'],t['L'],t['r'],init_pos=None,env_class=env_class_name)
+                    t['policy'] = policy_env_dict['policy']
+                    t['env'] = policy_env_dict['env']
                 else:
                     assert len(t_keys) == 4
                     assert 'path' in t.keys() and 'actions' in t.keys(),'In offline trajectory mode path and actions keys are mandatory in the trajectory dict'
@@ -330,7 +338,7 @@ class DifferentialDriveExperiment:
         horizon_plus_1 = len(s_tvp_template['_tvp'][0])
         for c in range(p_combinations):
             curr_trj = track_trajectories[c]
-            path, actions = bi.run_model(curr_trj['policy'],horizon_plus_1,curr_trj['L'],curr_trj['r'],curr_state)
+            path, actions = bi.run_model(curr_trj['policy'],curr_trj['env'],horizon_plus_1,curr_state)
             for k in range(horizon_plus_1):
                 path_index = k if k<len(path) else -1
                 s_tvp_template['_tvp',c,k,'x_ref'] = path[path_index][0]
@@ -368,7 +376,7 @@ class DifferentialDriveExperiment:
     def _fill_mpc_tvp_template_with_online_trajectory(curr_state,s_tvp_template,trajectory):
         #print("QUIIIIIIIIIIIIIIIIIII MPC from curr_state {}".format(curr_state))
         horizon_plus_1 = len(s_tvp_template['_tvp'])
-        path, actions = bi.run_model(trajectory['policy'],horizon_plus_1,trajectory['L'],trajectory['r'],curr_state)
+        path, actions = bi.run_model(trajectory['policy'],trajectory['env'],horizon_plus_1,curr_state)
         for k in range(horizon_plus_1):
             path_index = k if k<len(path) else -1
             s_tvp_template['_tvp',k,'x_ref'] = path[path_index][0]
@@ -484,7 +492,7 @@ class DifferentialDriveExperiment:
     
     @staticmethod
     def _fill_simulator_tvp_template_with_online_trajectory(curr_state,sim_tvp_template,trajectory):
-        path, actions = bi.run_model(trajectory['policy'],1,trajectory['L'],trajectory['r'],curr_state)
+        path, actions = bi.run_model(trajectory['policy'],trajectory['env'],1,curr_state)
         sim_tvp_template['x_ref'] = path[0][0]
         sim_tvp_template['y_ref'] = path[0][1]
         sim_tvp_template['theta_ref'] = path [0][2]
