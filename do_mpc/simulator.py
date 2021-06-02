@@ -25,6 +25,7 @@ from casadi import *
 from casadi.tools import *
 import pdb
 import warnings
+import inspect
 from do_mpc.data import Data
 import do_mpc.model
 
@@ -487,10 +488,23 @@ class Simulator(do_mpc.model.IteratedVariables):
             assert isinstance(v0, input_types), 'v0 is wrong input type. You have: {}. Must be of type'.format(type(v0), input_types)
             assert v0.shape == self.model._v.shape, 'v0 has incorrect shape. You have: {}, expected: {}'.format(v0.shape, self.model._v.shape)
 
-        tvp0 = self.tvp_fun(self._t0)
+
+        
+        #tvp0 = self.tvp_fun(self._t0)
         p0 = self.p_fun(self._t0)
         t0 = self._t0
         x0 = self._x0
+        tvp_fun_parameters = len(inspect.signature(self.tvp_fun).parameters)
+        print("SIM TVP FUN has {} parameters".format(tvp_fun_parameters))
+        #import code; code.interact(local=locals())
+        if tvp_fun_parameters == 1:
+            tvp0 = self.tvp_fun(self._t0)
+        else:
+            curr_state = x0
+            if isinstance(curr_state, structure3.DMStruct):
+                curr_state = curr_state.cat
+            tvp0 = self.tvp_fun(self._t0,[curr_state[0],curr_state[1],curr_state[2]])
+
         self.sim_x_num['_x'] = x0
         self.sim_p_num['_u'] = u0
         self.sim_p_num['_p'] = p0
