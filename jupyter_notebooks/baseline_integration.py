@@ -8,7 +8,7 @@ from gym.utils import seeding
 import matplotlib.pyplot as plt
 from casadi import *
 from casadi.tools import *
-from differential_drive_env_v1 import DifferentialDriveEnvV1
+from differential_drive_env_v2 import DifferentialDriveEnvV2
 
 import math
 
@@ -18,7 +18,7 @@ wheel_radius = 0.15
 
 from stable_baselines.common.env_checker import check_env
 from stable_baselines import PPO2
-def check_diff_drive_env(env_class=DifferentialDriveEnvV1):
+def check_diff_drive_env(env_class=DifferentialDriveEnvV2):
     env = env_class(L=axle_length, r=wheel_radius)
     # If the environment don't follow the interface, an error will be thrown
     check_env(env, warn=True)
@@ -51,7 +51,7 @@ def run_model(model,env,n_steps,init_pos):
       #env.render(mode = 'console')
   return obs_list, action_list
 
-def load_and_run_model(model_name,n_steps,a_length,w_radius,init_pose=None,env_class=DifferentialDriveEnvV1):
+def load_and_run_model(model_name,n_steps,a_length,w_radius,init_pose=None,env_class=DifferentialDriveEnvV2):
     ppo2_model_env_dict = setup_model_execution_on_env(model_name,a_length,w_radius,init_pose,env_class)
     obs_list,action_list = run_model(ppo2_model_env_dict['policy'],ppo2_model_env_dict['env'],n_steps,init_pose)
     return obs_list, action_list
@@ -266,7 +266,7 @@ def main():
     check_diff_drive_env()
     #init_pose  = [-0.05, -0.25, -np.pi/2]
     init_pose  = [0.12, -0.25, -np.pi/2]
-    obss, actions = load_and_run_model(ppo2_model_name,1000,axle_length, wheel_radius,init_pose,DifferentialDriveEnvV1)
+    obss, actions = load_and_run_model(ppo2_model_name,1000,axle_length, wheel_radius,init_pose,DifferentialDriveEnvV2)
     print("I have {} observations and {} actions ".format(len(obss),len(actions)))
     show_rl_trajectory(obss,actions)
 

@@ -3,7 +3,7 @@ from casadi import *
 import itertools
 import do_mpc
 import baseline_integration as bi
-from differential_drive_env_v1 import DifferentialDriveEnvV1
+from differential_drive_env_v2 import DifferentialDriveEnvV2
 
 class DifferentialDriveExperiment:
     def __init__(self,axle_lengths_dict,wheel_radii_dict, tracking_trajectories=None,n_horizon=50):
@@ -145,7 +145,7 @@ class DifferentialDriveExperiment:
                         assert 'env_class_name' in t.keys(), 'To specify the env of the policy for the tracking use the env_class_name key in the trajectory dict'
                         env_class_name = t['env_class_name']
                     else:
-                        env_class_name = DifferentialDriveEnvV1
+                        env_class_name = DifferentialDriveEnvV2
                     policy_env_dict = bi.setup_model_execution_on_env(t['policy_name'],t['L'],t['r'],init_pos=None,env_class=env_class_name)
                     t['policy'] = policy_env_dict['policy']
                     t['env'] = policy_env_dict['env']
