@@ -55,8 +55,51 @@ def load_and_run_model(model_name,n_steps,a_length,w_radius,init_pose=None,env_c
     ppo2_model_env_dict = setup_model_execution_on_env(model_name,a_length,w_radius,init_pose,env_class)
     obs_list,action_list = run_model(ppo2_model_env_dict['policy'],ppo2_model_env_dict['env'],n_steps,init_pose)
     return obs_list, action_list
-  
+
+
+def compare_trajectory_with_predicted_trajectory(gt_path,gt_actions,gt_final_state,model,env):
+  assert isinstance(gt_path, list) and isinstance(gt_actions, list)
+  assert len(gt_path)==len(gt_actions), 'gt_path and gt_actions must have the same length: len of gt_actions is: {}, len of gt_path is: {}'.format(len(gt_path),len(gt_actions))
+  complete_path = list(gt_path)
+  complete_path.append(gt_final_state)
+  comparison_list = []
+  for i in range(len(complete_path)-1):
+    obs_list, action_list = run_model(model,env,1,complete_path[i])
+    c_info = {'state':obs_list[0].tolist(),
+              'gt_next_state':complete_path[i+1],
+              'gt_action':gt_actions[i],
+              'predicted_action':action_list[0].tolist(),
+              'next_predicted_state':obs_list[1].tolist()
+    }
+    c_info['cartesian_error'] = sqrt((c_info['next_predicted_state'][0]-c_info['gt_next_state'][0])**2+
+                                     (c_info['next_predicted_state'][1]-c_info['gt_next_state'][1])**2)
+    c_info['orientation_error'] = atan2(sin(c_info['next_predicted_state'][2]-c_info['gt_next_state'][2]),
+                                        cos(c_info['next_predicted_state'][2]-c_info['gt_next_state'][2]))
+    comparison_list.append(c_info)
+  return comparison_list
     
+def show_policy_comparison_vs_gt(comparison_list):
+  gt_x_values = list(map(lambda c: c['gt_next_state'][0], comparison_list))
+  gt_y_values = list(map(lambda c:c['gt_next_state'][1],comparison_list))
+  predicted_x_values = list(map(lambda c:c['next_predicted_state'][0],comparison_list))
+  predicted_y_values = list(map(lambda c:c['next_predicted_state'][1],comparison_list))
+  fig, ax = plt.subplots(3,figsize=(15,15))
+  plt.subplots_adjust(left=0.1, bottom=0.1, right=0.9, top=0.9, wspace=2.0, hspace=0.5)
+  ax[0].scatter(gt_x_values, gt_y_values,color='blue')
+  ax[0].set_title("Path")
+  ax[0].scatter(predicted_x_values,predicted_y_values,color='red')
+  ax[0].axis("equal")
+  
+  cartesian_errors = list(map(lambda comp:comp['cartesian_error'],comparison_list))
+  ax[1].plot(range(len(cartesian_errors)), cartesian_errors)
+  ax[1].set_title("Cartesian error")
+
+  orientation_errors = list(map(lambda comp:comp['orientation_error'],comparison_list))
+  ax[2].plot(range(len(orientation_errors)), orientation_errors,color='blue')
+  ax[2].set_title("Orientation error")
+  
+  plt.show()
+
 def from_commands_to_robot_velocity(u_l,u_r,L, r):
     v = (u_l + u_r)* r/2
     w = (u_r - u_l)* r/L
