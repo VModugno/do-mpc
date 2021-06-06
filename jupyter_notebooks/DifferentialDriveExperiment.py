@@ -3,13 +3,14 @@ from casadi import *
 import itertools
 import do_mpc
 import baseline_integration as bi
-from differential_drive_env_v2 import DifferentialDriveEnvV2
+#from differential_drive_env_v2 import DifferentialDriveEnvV2
+from differential_drive_env_v1 import DifferentialDriveEnvV1
 
 class DifferentialDriveExperiment:
     def __init__(self,axle_lengths_dict,wheel_radii_dict, tracking_trajectories=None,n_horizon=50):
         #tracking_trajectories is an array of hashes 
         #   like this  {'L':..,'r':,'path':[[x0,y0,theta0],[x1,y1,theta1],...],'actions':[[u_l0,u_r0],[u_l0,u_r0],...]}
-        #   or like this  {'L':..,'r':,'policy_name': model_name}
+        #   or like this  {'L':..,'r':,'policy_name': model_name, 'env_class_name': class_name}
         self.preprocess_axle_info(axle_lengths_dict)
         self.preprocess_wheel_info(wheel_radii_dict)
     
@@ -139,14 +140,28 @@ class DifferentialDriveExperiment:
                 t_keys = list(t.keys())
                 assert 'L' in t.keys() and 'r' in t.keys(), 'In tracking trajectory mode the L and r keys are mandatory in the trajectory dict'
                 if self.online_trajectory_mode:
-                    assert len(t_keys) == 3 or len(t_keys) == 4
+                    assert len(t_keys) == 3 or len(t_keys) == 4 or len(t_keys) == 6
                     assert 'policy_name' in t.keys(), 'In online tracking trajectory mode policy_name is a mandatory entry in the trajectory dict'
                     if len(t_keys) == 4:
                         assert 'env_class_name' in t.keys(), 'To specify the env of the policy for the tracking use the env_class_name key in the trajectory dict'
                         env_class_name = t['env_class_name']
+                        agent_wrapper_class = None
+                        agent_wrapper_params = {}
+                    elif len(t_keys) == 6:
+                        assert 'env_class_name' in t.keys(), 'To specify the env of the policy for the tracking use the env_class_name key in the trajectory dict'
+                        assert 'agent_wrapper_class' in t.keys(), 'To specify the agent wrapper of the policy for the tracking use the agent_wrapper_class key in the trajectory dict'
+                        assert 'agent_wrapper_params' in t.keys(), 'To specify the parameters to construct the agent wrapper of the policy for the tracking use the agent_wrapper_params key in the trajectory dict'
+                        env_class_name = t['env_class_name']
+                        agent_wrapper_class = t['agent_wrapper_class']
+                        agent_wrapper_params = t['agent_wrapper_params']
                     else:
-                        env_class_name = DifferentialDriveEnvV2
-                    policy_env_dict = bi.setup_model_execution_on_env(t['policy_name'],t['L'],t['r'],init_pos=None,env_class=env_class_name)
+                        env_class_name = DifferentialDriveEnvV1
+                    
+                    policy_env_dict = bi.setup_model_execution_on_env(
+                            t['policy_name'], t['L'], t['r'],
+                            init_pos=None, env_class=env_class_name,
+                            model_wrapper_class=agent_wrapper_class, model_wrapper_params=agent_wrapper_params)
+                    
                     t['policy'] = policy_env_dict['policy']
                     t['env'] = policy_env_dict['env']
                 else:

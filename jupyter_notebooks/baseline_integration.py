@@ -25,23 +25,24 @@ def check_diff_drive_env(env_class):
     check_env(env, warn=True)
     print("Env checked!")
 
-def setup_model_execution_on_env(model_name,a_length,w_radius,init_pos,env_class):
+def setup_model_execution_on_env(model_name,a_length,w_radius,init_pos,env_class,model_wrapper_class=None,model_wrapper_params={}):
   model = PPO2.load(model_name)
-  env = env_class(L=a_length, r=w_radius,init_position=init_pos)
+  if model_wrapper_class:
+    model = model_wrapper_class(model, **model_wrapper_params)
+  env = env_class(L=a_length, r=w_radius, init_position=init_pos)
   return {'policy':model,'env':env}
 
 def run_model(model,env,n_steps,init_pos):
-  print("INITPOSE_after env created {}".format(env.init_position))
-  print("init_pose param{}".format(init_pos))
+  print("run_model() init_pose param = {}".format(init_pos))
   env.set_init_position(init_pos)
   obs = env.reset()
-  print("INITPOSE_after env reset {}".format(env.init_position))
-  print("OBS after resest {}".format(obs))
+  print("env.init_position after env reset() = {}".format(env.init_position))
+  print("obs returned by env.reset() = {}".format(obs))
   obs_list = [obs]
   action_list = []
   for i in range(n_steps):
-      action, _states = model.predict(obs,deterministic=True)
-      print("Run model iteration i {} state {} pred_action {}".format(i,obs,action))
+      action, _states = model.predict(obs, deterministic=False)
+      print("Run model iteration i {}, state {}, pred_action {}".format(i, obs, action))
       obs, rewards, done, info = env.step(action)
       action_list.append(action)
       obs_list.append(obs)
@@ -52,9 +53,9 @@ def run_model(model,env,n_steps,init_pos):
       #env.render(mode = 'console')
   return obs_list, action_list
 
-def load_and_run_model(model_name,n_steps,a_length,w_radius,env_class,init_pose=None):
+def load_and_run_model(model_name,n_steps,a_length,w_radius,env_class,init_pose=None,model_wrapper_class=None, model_wrapper_params={}):
     print("LOAD AND RUN init_pose before setup {}".format(init_pose))
-    ppo2_model_env_dict = setup_model_execution_on_env(model_name,a_length,w_radius,init_pose,env_class)
+    ppo2_model_env_dict = setup_model_execution_on_env(model_name,a_length,w_radius,init_pose,env_class,model_wrapper_class,model_wrapper_params)
     print("LOAD AND RUN init_pose before run model {}".format(init_pose))
     obs_list,action_list = run_model(ppo2_model_env_dict['policy'],ppo2_model_env_dict['env'],n_steps,init_pose)
     return obs_list, action_list
