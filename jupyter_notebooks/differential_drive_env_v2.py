@@ -102,7 +102,7 @@ class DifferentialDriveEnvV2(Env):
 
     if self.init_position is None:
        self.state = np.array([self.np_random.uniform(low=-0.5, high=0.5), self.np_random.uniform(low=-0.5, high=0.5), \
-                              self.np_random.uniform(low=-np.pi, high=np.pi)]) 
+                              self.np_random.uniform(low=-1, high=1)]) 
        #self.state = np.array([self.np_random.uniform(low=-0.1, high=0.1), self.np_random.uniform(low=-0.5, high=0.5), \
        #     -math.pi/2+self.np_random.uniform(low=-0.01, high=0.01)])
     else:
