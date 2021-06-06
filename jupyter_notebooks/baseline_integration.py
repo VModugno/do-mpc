@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from casadi import *
 from casadi.tools import *
 from differential_drive_env_v2 import DifferentialDriveEnvV2
+from differential_drive_env_v1 import DifferentialDriveEnvV1
 
 import math
 
@@ -18,7 +19,7 @@ wheel_radius = 0.15
 
 from stable_baselines.common.env_checker import check_env
 from stable_baselines import PPO2
-def check_diff_drive_env(env_class=DifferentialDriveEnvV2):
+def check_diff_drive_env(env_class):
     env = env_class(L=axle_length, r=wheel_radius)
     # If the environment don't follow the interface, an error will be thrown
     check_env(env, warn=True)
@@ -29,18 +30,18 @@ def setup_model_execution_on_env(model_name,a_length,w_radius,init_pos,env_class
   env = env_class(L=a_length, r=w_radius,init_position=init_pos)
   return {'policy':model,'env':env}
 
-#def run_model(model,n_steps,a_length,w_radius,init_pos=None, env_class=DifferentialDriveEnvV1):
 def run_model(model,env,n_steps,init_pos):
-  #env = env_class(L=a_length, r=w_radius,init_position=init_pos)
-  #print("INITPOSE_after env created {}".format(env.init_position))
+  print("INITPOSE_after env created {}".format(env.init_position))
+  print("init_pose param{}".format(init_pos))
   env.set_init_position(init_pos)
   obs = env.reset()
-  #print("INITPOSE_after env reset {}".format(env.init_position))
-  #print("OBS after resest {}".format(obs))
+  print("INITPOSE_after env reset {}".format(env.init_position))
+  print("OBS after resest {}".format(obs))
   obs_list = [obs]
   action_list = []
-  for _ in range(n_steps):
+  for i in range(n_steps):
       action, _states = model.predict(obs,deterministic=True)
+      print("Run model iteration i {} state {} pred_action {}".format(i,obs,action))
       obs, rewards, done, info = env.step(action)
       action_list.append(action)
       obs_list.append(obs)
@@ -51,8 +52,10 @@ def run_model(model,env,n_steps,init_pos):
       #env.render(mode = 'console')
   return obs_list, action_list
 
-def load_and_run_model(model_name,n_steps,a_length,w_radius,init_pose=None,env_class=DifferentialDriveEnvV2):
+def load_and_run_model(model_name,n_steps,a_length,w_radius,env_class,init_pose=None):
+    print("LOAD AND RUN init_pose before setup {}".format(init_pose))
     ppo2_model_env_dict = setup_model_execution_on_env(model_name,a_length,w_radius,init_pose,env_class)
+    print("LOAD AND RUN init_pose before run model {}".format(init_pose))
     obs_list,action_list = run_model(ppo2_model_env_dict['policy'],ppo2_model_env_dict['env'],n_steps,init_pose)
     return obs_list, action_list
 
@@ -263,10 +266,10 @@ def show_rl_trajectory(obs_list,act_list,a_length,w_radius):
     plt.show()
 
 def main():
-    check_diff_drive_env()
+    check_diff_drive_env(DifferentialDriveEnvV1)
     #init_pose  = [-0.05, -0.25, -np.pi/2]
     init_pose  = [0.12, -0.25, -np.pi/2]
-    obss, actions = load_and_run_model(ppo2_model_name,1000,axle_length, wheel_radius,init_pose,DifferentialDriveEnvV2)
+    obss, actions = load_and_run_model(ppo2_model_name,1000,axle_length, wheel_radius,DifferentialDriveEnvV1,init_pose)
     print("I have {} observations and {} actions ".format(len(obss),len(actions)))
     show_rl_trajectory(obss,actions)
 
