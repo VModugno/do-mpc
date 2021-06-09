@@ -23,8 +23,8 @@ class CMA_ES_Wrapper:
     def generate_step_history(self, r, mpc_history):
         hist = []
         for elem in mpc_history:
-            x0, y0, theta0 = elem['init_state']
-            wl, wr = elem['input']
+            x0, y0, theta0 = elem['x']
+            wl, wr = elem['u']
 
             v = (wl + wr) * r / 2      
             w = (wl - wr) * r / self.L 
@@ -47,7 +47,7 @@ class CMA_ES_Wrapper:
 
     def optimize(self, param_set, mpc_history):
         self.mpc_history = mpc_history
-        self.step_mpc_history = [elem['end_state'] for elem in mpc_history]
+        self.step_mpc_history = [elem['final_x'] for elem in mpc_history]
 
         mean, sigma = self.get_mean_sigma(param_set)
 
@@ -61,7 +61,7 @@ class CMA_ES_Wrapper:
 
     def optimize_step(self, param_set, mpc_history):
         self.mpc_history = mpc_history
-        self.step_mpc_history = [elem['end_state'] for elem in mpc_history]
+        self.step_mpc_history = [elem['final_x'] for elem in mpc_history]
 
         mean, sigma = self.get_mean_sigma(param_set)
 
