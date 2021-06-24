@@ -42,7 +42,7 @@ def run_model(model,env,n_steps,init_pos):
   action_list = []
   for i in range(n_steps):
       action, _states = model.predict(obs, deterministic=False)
-      print("Run model iteration i {}, state {}, pred_action {}".format(i, obs, action))
+      #print("Run model iteration i {}, state {}, pred_action {}".format(i, obs, action))
       obs, rewards, done, info = env.step(action)
       action_list.append(action)
       obs_list.append(obs)

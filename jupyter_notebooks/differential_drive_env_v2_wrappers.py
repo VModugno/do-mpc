@@ -47,11 +47,11 @@ class RLAgentUnscalingWrapper:
     self.action_scaling_factors = np.array(action_scaling_factors)
 
   def predict(self, state, deterministic=False):
-    print(f"RLAgentUnscalingWrapper.predict(): state given as parameter = {state}")
+    #print(f"RLAgentUnscalingWrapper.predict(): state given as parameter = {state}")
     state = np.array(state) / self.state_scaling_factors
-    print(f"RLAgentUnscalingWrapper.predict(): state passed to the internal agent = {state}")
+    #print(f"RLAgentUnscalingWrapper.predict(): state passed to the internal agent = {state}")
     action, _states = self.scaled_agent.predict(state, deterministic=deterministic)
-    print(f"RLAgentUnscalingWrapper.predict(): internal agent returned action = {action}")
+    #print(f"RLAgentUnscalingWrapper.predict(): internal agent returned action = {action}")
     action = action * self.action_scaling_factors
-    print(f"RLAgentUnscalingWrapper.predict(): returning action = {action}")
+    #print(f"RLAgentUnscalingWrapper.predict(): returning action = {action}")
     return action, _states
