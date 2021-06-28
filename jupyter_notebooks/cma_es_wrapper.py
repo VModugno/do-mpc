@@ -15,8 +15,8 @@ class CMA_ES_Wrapper:
         min_param = min(param_set)
         max_param = max(param_set)
 
-        mean = (min_param+max_param)/2
-        sigma = (max_param-min_param)/3
+        mean = np.mean(param_set)
+        sigma = np.std(param_set)
 
         return mean, sigma
 
@@ -26,17 +26,12 @@ class CMA_ES_Wrapper:
             x0, y0, theta0 = elem['x']
             wl, wr = elem['u']
 
-            v = (wl + wr) * r / 2      
-            w = (wl - wr) * r / self.L 
+            v = (wr + wl) * r / 2      
+            w = (wr - wl) * r / self.L 
 
             x = x0 + v * self.delta_t * math.cos(theta0)
             y = y0 + v * self.delta_t * math.sin(theta0)
             theta = theta0 + w * self.delta_t
-
-            if theta > math.pi:
-                theta = theta - 2*math.pi
-            elif theta < -math.pi:
-                theta = (2*math.pi + theta)
             
             hist.append([x,y,theta])
         return hist
@@ -70,7 +65,7 @@ class CMA_ES_Wrapper:
             solutions = es.ask()
             es.tell(solutions, [self.loss(param_val) for param_val in solutions])
         es.stop()
-        new_param_set = sorted([sample[0] for sample in es.ask()], key=float)
+        new_param_set = sorted([float(sample[0]) for sample in es.ask()], key=float)
         return new_param_set
 
 
